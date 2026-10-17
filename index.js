@@ -9,14 +9,14 @@ const ID_GRUPY = "3225092577679626";
 const SLOWO_KLUCZ = "zapisy";
 const WYBRANY_PAKIET = "pakiet 1";
 const KOD_PIN = "0612";
-const SECRET_2FA = "IDS7QFB4QZR5HHBLIZDO4FEIBUAHWQZO"; 
+const SECRET_2FA = "IDS7QFB4QZR5HHBLIZDO4FEIBUAHWQZO";
+const HASLO_FB = process.env.FB_PASSWORD || ""; 
 const PORT = process.env.PORT || 3000;
 // ================================================
 
 let globalPage = null;
 
 const server = http.createServer(async (req, res) => {
-  // Zwracanie czystego pliku obrazu z unikalnym timestampem
   if (req.url.startsWith("/screen-img") && globalPage) {
     try {
       const screenshot = await globalPage.screenshot({ type: "jpeg", quality: 70 });
@@ -33,7 +33,6 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
-  // Interfejs do podglądu z auto-odświeżaniem co 1,5s
   if (req.url === "/screen") {
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
     return res.end(`
@@ -125,33 +124,52 @@ try {
     console.log("Strona załadowana (timeout pominięty).");
   }
 
-  // --- AUTOMATYCZNE KLIKNIĘCIE PROFILU OLIWIER IRAŃSKI ---
+  // --- ODBLOKOWANIE: KLIKNIĘCIE W PROFIL OLIWIERA ---
   try {
     await new Promise(r => setTimeout(r, 3000));
 
-    const elements = await page.$$('span, div, a, button');
-    let clicked = false;
-
-    for (let el of elements) {
-      const text = await page.evaluate(node => node.innerText, el);
-      if (text && text.includes("Oliwier Irański")) {
-        console.log("Wykryto profil Oliwiera! Klikam...");
-        await el.click();
-        clicked = true;
-        await new Promise(r => setTimeout(r, 4000));
-        break;
+    // Wyszukiwanie głównego przycisku/linku z kafelka "Oliwier Irański"
+    const clicked = await page.evaluate(() => {
+      const allElements = Array.from(document.querySelectorAll('div, a, button, span'));
+      const targetNode = allElements.find(el => el.innerText && el.innerText.trim() === "Oliwier Irański");
+      if (targetNode) {
+        // Znajdujemy klikalny kontener rodzica (link lub przycisk)
+        const clickable = targetNode.closest('a, button, [role="button"]') || targetNode;
+        clickable.click();
+        return true;
       }
+      return false;
+    });
+
+    if (clicked) {
+      console.log("Pomyślnie kliknięto w kafelek profilu Oliwiera!");
+      await new Promise(r => setTimeout(r, 4000));
+    } else {
+      console.log("Nie znaleziono kafelka profilu Oliwiera lub profil był już wybrany.");
+    }
+  } catch (e) {
+    console.log("Błąd podczas klikania profilu:", e.message);
+  }
+
+  // --- PRÓBA WPISANIA HASŁA (JEŚLI POJAWI SIĘ FORMULARZ) ---
+  try {
+    const passwordInput = await page.$('input[type="password"]');
+    if (passwordInput && HASLO_FB) {
+      console.log("Wykryto pole na hasło! Wprowadzam hasło do FB...");
+      await passwordInput.type(HASLO_FB, { delay: 100 });
+      await page.keyboard.press("Enter");
+      await new Promise(r => setTimeout(r, 6000));
     }
   } catch (e) {}
 
   // --- AUTOMATYCZNE 2FA / KOD Z GENERATORA ---
   try {
     const currentUrl = page.url();
-    if (currentUrl.includes("auth_platform") || currentUrl.includes("checkpoint") || (await page.$('input[type="text"]'))) {
+    const input2FA = await page.$('input[type="text"], input[name="approvals_code"]');
+    if (currentUrl.includes("auth_platform") || currentUrl.includes("checkpoint") || input2FA) {
       const code2FA = authenticator.generate(SECRET_2FA);
       console.log(`Generuję kod 2FA dla Oliwiera: ${code2FA}`);
 
-      const input2FA = await page.$('input[type="text"], input[name="approvals_code"]');
       if (input2FA) {
         await input2FA.type(code2FA, { delay: 100 });
         await page.keyboard.press("Enter");
