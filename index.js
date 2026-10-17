@@ -1,4 +1,4 @@
-const login = require("fca-unofficial");
+const login = require("fca-project-origo");
 const http = require("http");
 
 // ================= KONFIGURACJA =================
