@@ -7,6 +7,6 @@
   },
   "dependencies": {
     "express": "^4.19.2",
-    "ws3-fca": "git+https://git@github.com/HarryDaor/fca-project-origo.git#master"
+    "ws3-fca": "git+https://github.com/HarryDaor/fca-project-origo.git"
   }
 }
