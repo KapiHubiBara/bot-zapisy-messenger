@@ -8,21 +8,16 @@ const fs = require("fs");
 const ID_GRUPY = "3225092577679626";
 const SLOWO_KLUCZ = "zapisy";
 const WYBRANY_PAKIET = "pakiet 1";
-const KOD_PIN = "062003"; // Twój PIN Messenger
-
-// Tajny klucz 2FA z Facebooka (bez spacji)
+const KOD_PIN = "0612"; // Twój zaktualizowany PIN
 const SECRET_2FA = "IDS7QFB4QZR5HHBLIZDO4FEIBUAHWQZO"; 
-
 const PORT = process.env.PORT || 3000;
 // ================================================
 
-let globalPage = null; // Zmienna do przechowywania referencji do karty przeglądarki
+let globalPage = null;
 
-// --- SERWER HTTP Z PODGLĄDEM LIVE (/screen) ---
 const server = http.createServer(async (req, res) => {
   if (req.url === "/screen" && globalPage) {
     try {
-      // Robimy zrzut ekranu i wysyłamy jako obraz PNG
       const screenshot = await globalPage.screenshot({ type: "png" });
       res.writeHead(200, { 
         "Content-Type": "image/png",
@@ -31,7 +26,7 @@ const server = http.createServer(async (req, res) => {
       return res.end(screenshot);
     } catch (err) {
       res.writeHead(500, { "Content-Type": "text/plain" });
-      return res.end("Blad generowania podgladu: " + err.message);
+      return res.end("Blad podgladu: " + err.message);
     }
   }
 
@@ -81,13 +76,13 @@ try {
   });
 
   const page = await browser.newPage();
-  globalPage = page; // Udostępniamy kartę dla podglądu /screen
+  globalPage = page;
 
   await page.setUserAgent(
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
   );
 
-  console.log("Wgrywanie ciasteczek dla facebook.com...");
+  console.log("Wgrywanie ciasteczek...");
   await page.setCookie(...cookies);
 
   const targetUrl = `https://www.facebook.com/messages/t/${ID_GRUPY}`;
@@ -99,33 +94,43 @@ try {
     console.log("Strona załadowana (timeout pominięty).");
   }
 
-  // --- AUTOMATYCZNA OBSŁUGA EKRANU WERYFIKACJI DWUETAPOWEJ (2FA) ---
+  // --- ODBLOKOWANIE / KLIKNIĘCIE "KONTYNUUJ" PO ODPRACOWANIU NA TELEFONIE ---
   try {
     await new Promise(r => setTimeout(r, 4000));
+    
+    // Szukamy niebieskich przycisków potwierdzenia (np. "Kontynuuj", "To ja", "Przejdź dalej")
+    const buttons = await page.$$('button, [role="button"], a');
+    for (let btn of buttons) {
+      const text = await page.evaluate(el => el.innerText, btn);
+      if (text && (text.toLowerCase().includes("kontynuuj") || text.toLowerCase().includes("to ja") || text.toLowerCase().includes("dalej"))) {
+        console.log(`Klikam przycisk odblokowujący: "${text}"`);
+        await btn.click();
+        await new Promise(r => setTimeout(r, 5000));
+        break;
+      }
+    }
+  } catch (e) {}
+
+  // --- AUTOMATYCZNE 2FA ---
+  try {
     const currentUrl = page.url();
-
     if (currentUrl.includes("auth_platform") || currentUrl.includes("checkpoint")) {
-      console.log("Wykryto ekran weryfikacji dwuetapowej 2FA! Generuję kod...");
-
+      console.log("Generowanie i wpisywanie kodu 2FA...");
       const code2FA = authenticator.generate(SECRET_2FA);
-      console.log(`Wygenerowany kod 2FA: ${code2FA}`);
 
       const input2FA = await page.$('input[type="text"], input[name="approvals_code"]');
       if (input2FA) {
         await input2FA.type(code2FA, { delay: 100 });
         await page.keyboard.press("Enter");
-        console.log("Kod 2FA wysłany, oczekiwanie na zatwierdzenie...");
         await new Promise(r => setTimeout(r, 6000));
       }
     }
-  } catch (e) {
-    console.log("Błąd podczas automatycznego 2FA lub ekran nie wystąpił.");
-  }
+  } catch (e) {}
 
-  // --- OBSŁUGA PIN-U E2EE ---
+  // --- WPROWADZANIE PIN-U 0612 ---
   try {
-    if (KOD_PIN && KOD_PIN !== "TUTAJ_WPISZ_SWOJ_6_CYFROWY_PIN") {
-      console.log("Wprowadzanie kodu PIN...");
+    if (KOD_PIN) {
+      console.log(`Wprowadzanie kodu PIN (${KOD_PIN})...`);
       for (let digit of KOD_PIN) {
         await page.keyboard.press(digit);
         await new Promise(r => setTimeout(r, 200));
@@ -134,7 +139,7 @@ try {
     }
   } catch (e) {}
 
-  console.log("Zalogowano na Facebook.com! Rozpoczynam nasłuch wiadomości...");
+  console.log("Rozpoczynam obserwację wiadomości w czacie...");
 
   let przetworzoneWiadomosci = new Set();
 
@@ -171,9 +176,7 @@ try {
             await page.click(inputSelector);
             await page.keyboard.type(WYBRANY_PAKIET, { delay: 50 });
             await page.keyboard.press("Enter");
-            console.log(`SUKCES! Wysłano odpowiedź na FB: "${WYBRANY_PAKIET}"`);
-          } else {
-            console.log("Nie znaleziono pola tekstowego na FB.");
+            console.log(`SUKCES! Wysłano odpowiedź: "${WYBRANY_PAKIET}"`);
           }
         }
       }
