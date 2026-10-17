@@ -1,5 +1,6 @@
 const puppeteer = require("puppeteer-core");
 const chromium = require("@sparticuz/chromium");
+const { authenticator } = require("otplib");
 const http = require("http");
 const fs = require("fs");
 
@@ -7,13 +8,17 @@ const fs = require("fs");
 const ID_GRUPY = "3225092577679626";
 const SLOWO_KLUCZ = "zapisy";
 const WYBRANY_PAKIET = "pakiet 1";
-const KOD_PIN = "062003"; // Twój 6-cyfrowy PIN Messenger
+const KOD_PIN = "062003"; // Wpisz swój 6-cyfrowy PIN Messenger
+
+// Tajny klucz 2FA z Facebooka (bez spacji)
+const SECRET_2FA = "IDS7QFB4QZR5HHBLIZDO4FEIBUAHWQZO"; 
+
 const PORT = process.env.PORT || 3000;
 // ================================================
 
 const server = http.createServer((req, res) => {
   res.writeHead(200, { "Content-Type": "text/plain" });
-  res.end("Bot Puppeteer dziala i obserwuje czat!\n");
+  res.end("Bot Puppeteer dziala na Facebook.com z 2FA!\n");
 });
 
 server.listen(PORT, () => {
@@ -31,7 +36,7 @@ try {
   cookies = parsed.map(c => ({
     name: c.key || c.name,
     value: c.value,
-    domain: (c.domain || ".messenger.com").startsWith(".") ? c.domain || ".messenger.com" : "." + c.domain,
+    domain: ".facebook.com",
     path: c.path || "/",
     httpOnly: c.httpOnly || false,
     secure: true,
@@ -43,7 +48,7 @@ try {
 }
 
 (async () => {
-  console.log("Uruchamianie silnika Chromium (@sparticuz)...");
+  console.log("Uruchamianie silnika Chromium...");
 
   const executablePath = await chromium.executablePath();
 
@@ -60,11 +65,11 @@ try {
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
   );
 
-  console.log("Wgrywanie ciasteczek sesyjnych...");
+  console.log("Wgrywanie ciasteczek dla facebook.com...");
   await page.setCookie(...cookies);
 
-  const targetUrl = `https://www.messenger.com/t/${ID_GRUPY}`;
-  console.log(`Otwieranie czatu: ${targetUrl}`);
+  const targetUrl = `https://www.facebook.com/messages/t/${ID_GRUPY}`;
+  console.log(`Otwieranie czatu FB: ${targetUrl}`);
 
   try {
     await page.goto(targetUrl, { waitUntil: "networkidle2", timeout: 60000 });
@@ -72,49 +77,46 @@ try {
     console.log("Strona załadowana (timeout pominięty).");
   }
 
-  // --- AUTOMATYCZNE POKONANIE EKRANU LOGOWANIA / "KONTYNUUJ JAKO" ---
+  // --- AUTOMATYCZNA OBSŁUGA EKRANU WERYFIKACJI DWUETAPOWEJ (2FA) ---
   try {
-    await new Promise(r => setTimeout(r, 3000));
-    
-    // Kliknięcie w przycisk "Kontynuuj jako..." jeśli się pojawi
-    const continueBtn = await page.$('[role="button"], button, div[tabindex="0"]');
-    if (continueBtn) {
-      const btnText = await page.evaluate(el => el.innerText, continueBtn);
-      if (btnText.toLowerCase().includes("kontynuuj") || btnText.toLowerCase().includes("continue")) {
-        console.log(`Wykryto ekran przejścia: "${btnText}". Klikam...`);
-        await continueBtn.click();
-        await new Promise(r => setTimeout(r, 5000));
+    await new Promise(r => setTimeout(r, 4000));
+    const currentUrl = page.url();
+
+    if (currentUrl.includes("auth_platform") || currentUrl.includes("checkpoint")) {
+      console.log("Wykryto ekran weryfikacji dwuetapowej 2FA! Generuję kod...");
+
+      // Wygenerowanie 6-cyfrowego kodu TOTP na żywo
+      const code2FA = authenticator.generate(SECRET_2FA);
+      console.log(`Wygenerowany kod 2FA: ${code2FA}`);
+
+      // Próba znalezienia pola na kod 2FA
+      const input2FA = await page.$('input[type="text"], input[name="approvals_code"]');
+      if (input2FA) {
+        await input2FA.type(code2FA, { delay: 100 });
+        await page.keyboard.press("Enter");
+        console.log("Kod 2FA wysłany, oczekiwanie na zatwierdzenie...");
+        await new Promise(r => setTimeout(r, 6000));
       }
     }
-  } catch (e) {}
+  } catch (e) {
+    console.log("Błąd podczas automatycznego 2FA lub ekran nie wystąpił.");
+  }
 
-  // --- OBSŁUGA PIN-U DLA SZYFROWANIA E2EE ---
+  // --- OBSŁUGA PIN-U E2EE ---
   try {
-    console.log("Czekam na ewentualny modal z kodem PIN...");
-    await new Promise(r => setTimeout(r, 4000));
-
     if (KOD_PIN && KOD_PIN !== "TUTAJ_WPISZ_SWOJ_6_CYFROWY_PIN") {
       console.log("Wprowadzanie kodu PIN...");
       for (let digit of KOD_PIN) {
         await page.keyboard.press(digit);
         await new Promise(r => setTimeout(r, 200));
       }
-      console.log("PIN wprowadzony, czekam na odblokowanie...");
-      await new Promise(r => setTimeout(r, 5000));
+      await new Promise(r => setTimeout(r, 3000));
     }
   } catch (e) {}
 
-  console.log("Rozpoczynam obserwację wiadomości...");
+  console.log("Zalogowano na Facebook.com! Rozpoczynam nasłuch wiadomości...");
 
   let przetworzoneWiadomosci = new Set();
-
-  setInterval(async () => {
-    try {
-      const pageText = await page.evaluate(() => document.body.innerText);
-      const shortText = pageText.replace(/\s+/g, ' ').slice(0, 150);
-      console.log(`[WIDOK CZATU]: ${shortText}...`);
-    } catch (e) {}
-  }, 10000);
 
   setInterval(async () => {
     try {
@@ -139,19 +141,19 @@ try {
         const ostatnia = wiadomosci[wiadomosci.length - 1];
 
         if (!przetworzoneWiadomosci.has(ostatnia.id)) {
-          console.log(`[NOWA WIADOMOŚĆ]: "${ostatnia.text}"`);
+          console.log(`[NOWA WIADOMOŚĆ FB]: "${ostatnia.text}"`);
           przetworzoneWiadomosci.add(ostatnia.id);
 
-          const inputSelector = 'p[dir="auto"], [role="textbox"], div[contenteditable="true"]';
+          const inputSelector = 'div[role="textbox"], p[dir="auto"], div[contenteditable="true"]';
           const inputFound = await page.$(inputSelector);
 
           if (inputFound) {
             await page.click(inputSelector);
             await page.keyboard.type(WYBRANY_PAKIET, { delay: 50 });
             await page.keyboard.press("Enter");
-            console.log(`SUKCES! Wysłano odpowiedź: "${WYBRANY_PAKIET}"`);
+            console.log(`SUKCES! Wysłano odpowiedź na FB: "${WYBRANY_PAKIET}"`);
           } else {
-            console.log("Nie znaleziono pola tekstowego.");
+            console.log("Nie znaleziono pola tekstowego na FB.");
           }
         }
       }
