@@ -17,15 +17,14 @@ const PORT = process.env.PORT || 3000;
 
 let globalPage = null;
 
+// HTTP Keep-Alive Server
 const server = http.createServer(async (req, res) => {
   if (req.url.startsWith("/screen-img") && globalPage) {
     try {
-      const screenshot = await globalPage.screenshot({ type: "jpeg", quality: 70 });
+      const screenshot = await globalPage.screenshot({ type: "jpeg", quality: 60 });
       res.writeHead(200, { 
         "Content-Type": "image/jpeg",
-        "Cache-Control": "no-cache, no-store, must-revalidate",
-        "Pragma": "no-cache",
-        "Expires": "0"
+        "Cache-Control": "no-cache, no-store, must-revalidate"
       });
       return res.end(screenshot);
     } catch (err) {
@@ -43,26 +42,23 @@ const server = http.createServer(async (req, res) => {
           <title>Podgląd Bota Messenger LIVE</title>
           <style>
             body { background: #111; color: #fff; font-family: sans-serif; text-align: center; margin: 0; padding: 20px; }
-            img { max-width: 95vw; height: auto; border: 2px solid #444; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); }
-            h3 { margin-bottom: 15px; font-weight: 300; }
+            img { max-width: 95vw; height: auto; border: 2px solid #444; border-radius: 8px; }
           </style>
         </head>
         <body>
-          <h3>Podgląd na żywo z przeglądarki bota (Render)</h3>
-          <img id="live" src="/screen-img?t=${Date.now()}" alt="Podglad na zywo..." />
+          <h3>Podgląd na żywo z przeglądarki bota</h3>
+          <img id="live" src="/screen-img?t=${Date.now()}" alt="Podglad..." />
           <script>
             const img = document.getElementById('live');
-            setInterval(() => {
-              img.src = '/screen-img?t=' + Date.now();
-            }, 1500);
+            setInterval(() => { img.src = '/screen-img?t=' + Date.now(); }, 1000);
           </script>
         </body>
       </html>
     `);
   }
 
-  res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-  res.end(`<h2>Bot Puppeteer dziala!</h2><p><a href="/screen" target="_blank">👉 Podgląd na żywo (/screen)</a></p>`);
+  res.writeHead(200, { "Content-Type": "text/plain" });
+  res.end("Bot jest aktywny i czuwa (Keep-Alive OK).\n");
 });
 
 server.listen(PORT, () => {
@@ -70,7 +66,7 @@ server.listen(PORT, () => {
 });
 
 (async () => {
-  console.log("Uruchamianie silnika Chromium...");
+  console.log("Uruchamianie silnika Chromium dla trybu natychmiastowego...");
 
   const executablePath = await chromium.executablePath();
 
@@ -97,63 +93,57 @@ server.listen(PORT, () => {
 
   await new Promise(r => setTimeout(r, 3000));
 
-  // --- 1. OBSŁUGA STANDARDOWEGO FORMULARZA LOGOWANIA ---
+  // --- LOGOWANIE FORMULARZEM (JEŚLI NIEZALOGOWANY) ---
   try {
     const emailInput = await page.$('input[name="email"], input[id="email"]');
     const passInput = await page.$('input[name="pass"], input[id="pass"]');
 
     if (emailInput && passInput && FB_EMAIL && FB_PASSWORD) {
-      console.log("Formularz logowania wykryty. Czyszczę i wprowadzam E-mail oraz Hasło...");
-      
-      // Czyszczenie i wpisanie e-maila
+      console.log("Logowanie do Facebooka...");
       await emailInput.click({ clickCount: 3 });
-      await emailInput.type(FB_EMAIL, { delay: 50 });
+      await emailInput.type(FB_EMAIL, { delay: 20 });
 
-      // Czyszczenie i wpisanie hasła
       await passInput.click({ clickCount: 3 });
-      await passInput.type(FB_PASSWORD, { delay: 50 });
+      await passInput.type(FB_PASSWORD, { delay: 20 });
 
       await page.keyboard.press("Enter");
-      console.log("Dane wysłane, czekam na odpowiedź...");
-      await new Promise(r => setTimeout(r, 6000));
+      await new Promise(r => setTimeout(r, 5000));
     }
-  } catch (e) {
-    console.log("Błąd podczas wpisywania danych:", e.message);
-  }
+  } catch (e) {}
 
-  // --- 2. AUTOMATYCZNE ODBLOKOWANIE 2FA (TYLKO JEŚLI JESTEŚMY NA EKRANIE CHECKPOINT) ---
+  // --- 2FA ---
   try {
     const currentUrl = page.url();
     if (currentUrl.includes("auth_platform") || currentUrl.includes("checkpoint")) {
       const code2FA = authenticator.generate(SECRET_2FA);
-      console.log(`Wykryto 2FA! Generuję kod: ${code2FA}`);
+      console.log(`Wpisuję kod 2FA: ${code2FA}`);
 
       const input2FA = await page.$('input[type="text"], input[name="approvals_code"]');
       if (input2FA) {
-        await input2FA.type(code2FA, { delay: 100 });
+        await input2FA.type(code2FA, { delay: 50 });
         await page.keyboard.press("Enter");
-        console.log("Kod 2FA wysłany!");
-        await new Promise(r => setTimeout(r, 6000));
+        await new Promise(r => setTimeout(r, 5000));
       }
     }
   } catch (e) {}
 
-  // --- 3. PIN E2EE 0612 ---
+  // --- PIN E2EE ---
   try {
     if (KOD_PIN) {
-      console.log(`Wprowadzanie kodu PIN (${KOD_PIN})...`);
+      console.log(`Wprowadzanie PIN E2EE (${KOD_PIN})...`);
       for (let digit of KOD_PIN) {
         await page.keyboard.press(digit);
-        await new Promise(r => setTimeout(r, 200));
+        await new Promise(r => setTimeout(r, 100));
       }
       await new Promise(r => setTimeout(r, 3000));
     }
   } catch (e) {}
 
-  console.log("Rozpoczynam obserwację wiadomości...");
+  console.log("⚡ BOT JEST W PEŁNI ZALOGOWANY I NASŁUCHUJE W CZASIE RZECZYWISTYM! ⚡");
 
   let przetworzoneWiadomosci = new Set();
 
+  // Szybka pętla sprawdzająca DOM co 300 ms
   setInterval(async () => {
     try {
       const wiadomosci = await page.evaluate((keyword) => {
@@ -177,7 +167,7 @@ server.listen(PORT, () => {
         const ostatnia = wiadomosci[wiadomosci.length - 1];
 
         if (!przetworzoneWiadomosci.has(ostatnia.id)) {
-          console.log(`[NOWA WIADOMOŚĆ FB]: "${ostatnia.text}"`);
+          console.log(`🚀 [WYKRYTO]: "${ostatnia.text}" - WYSYŁAM REAKCJĘ!`);
           przetworzoneWiadomosci.add(ostatnia.id);
 
           const inputSelector = 'div[role="textbox"], p[dir="auto"], div[contenteditable="true"]';
@@ -185,12 +175,13 @@ server.listen(PORT, () => {
 
           if (inputFound) {
             await page.click(inputSelector);
-            await page.keyboard.type(WYBRANY_PAKIET, { delay: 50 });
+            // Szybkie wklepanie pakietu i natychmiastowy Enter
+            await page.keyboard.type(WYBRANY_PAKIET, { delay: 10 });
             await page.keyboard.press("Enter");
-            console.log(`SUKCES! Wysłano odpowiedź: "${WYBRANY_PAKIET}"`);
+            console.log(`SUKCES! Wysłano: "${WYBRANY_PAKIET}"`);
           }
         }
       }
     } catch (err) {}
-  }, 1500);
+  }, 300);
 })();
