@@ -88,27 +88,6 @@ server.listen(PORT, () => {
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
   );
 
-  // Wczytywanie ciasteczek jeśli istnieją
-  try {
-    let appStateRaw = process.env.APPSTATE_JSON;
-    if (!appStateRaw && fs.existsSync("appstate.json")) {
-      appStateRaw = fs.readFileSync("appstate.json", "utf8");
-    }
-    if (appStateRaw) {
-      const parsed = JSON.parse(appStateRaw);
-      const cookies = parsed.map(c => ({
-        name: c.key || c.name,
-        value: c.value,
-        domain: ".facebook.com",
-        path: c.path || "/",
-        httpOnly: c.httpOnly || false,
-        secure: true,
-        sameSite: "Lax"
-      }));
-      await page.setCookie(...cookies);
-    }
-  } catch (err) {}
-
   const targetUrl = `https://www.facebook.com/messages/t/${ID_GRUPY}`;
   console.log(`Otwieranie czatu FB: ${targetUrl}`);
 
@@ -116,45 +95,67 @@ server.listen(PORT, () => {
     await page.goto(targetUrl, { waitUntil: "networkidle2", timeout: 60000 });
   } catch (e) {}
 
-  await new Promise(r => setTimeout(r, 3000));
+  await new Promise(r => setTimeout(r, 4000));
 
-  // --- KLIKNIĘCIE PRZYCISKU "KONTYNUUJ" ---
+  // --- KROK 1: FIZYCZNE KLIKNIĘCIE W PROFIL OLIWIER IRAŃSKI ---
   try {
-    const clicked = await page.evaluate(() => {
-      const buttons = Array.from(document.querySelectorAll('button, div[role="button"], a'));
-      const continueBtn = buttons.find(b => b.innerText && b.innerText.trim().toLowerCase().includes("kontynuuj"));
-      if (continueBtn) {
-        continueBtn.click();
-        return true;
+    const box = await page.evaluate(() => {
+      const allDivs = Array.from(document.querySelectorAll('span, div'));
+      const target = allDivs.find(el => el.innerText && el.innerText.trim() === "Oliwier Irański");
+      if (target) {
+        const rect = target.getBoundingClientRect();
+        return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
       }
-      return false;
+      return null;
     });
 
-    if (clicked) {
-      console.log("SUKCES: Kliknięto przycisk Kontynuuj!");
+    if (box) {
+      console.log(`Znaleziono pozycję profilu Oliwiera (X: ${box.x}, Y: ${box.y}). Klikam myszą...`);
+      await page.mouse.click(box.x, box.y);
+      await new Promise(r => setTimeout(r, 4000));
+    } else {
+      console.log("Nie znaleziono etykiety 'Oliwier Irański' na stronie.");
+    }
+  } catch (e) {
+    console.log("Błąd podczas klikania profilu myszą:", e.message);
+  }
+
+  // --- KROK 2: PRZYCISK KONTYNUUJ (JEŚLI POJAWI SIĘ NIEBIESKI PRZYCISK) ---
+  try {
+    const continueBox = await page.evaluate(() => {
+      const btns = Array.from(document.querySelectorAll('button, div[role="button"], a'));
+      const target = btns.find(b => b.innerText && b.innerText.trim().toLowerCase().includes("kontynuuj"));
+      if (target) {
+        const rect = target.getBoundingClientRect();
+        return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+      }
+      return null;
+    });
+
+    if (continueBox) {
+      console.log(`Klikam przycisk Kontynuuj myszą (X: ${continueBox.x}, Y: ${continueBox.y})...`);
+      await page.mouse.click(continueBox.x, continueBox.y);
+      await new Promise(r => setTimeout(r, 4000));
+    }
+  } catch (e) {}
+
+  // --- KROK 3: LOGOWANIE HASŁEM (JEŚLI WYSTĄPI POLE PASSSWORD) ---
+  try {
+    const passInput = await page.$('input[type="password"]');
+    if (passInput && FB_PASSWORD) {
+      console.log("Wpisuję hasło do konta...");
+      await passInput.type(FB_PASSWORD, { delay: 100 });
+      await page.keyboard.press("Enter");
       await new Promise(r => setTimeout(r, 5000));
     }
   } catch (e) {}
 
-  // Logowanie formularzem jeśli pojawiłby się e-mail/pass
-  const emailInput = await page.$('input[name="email"], input[id="email"]');
-  if (emailInput && FB_EMAIL && FB_PASSWORD) {
-    console.log("Formularz logowania wykryty! Wprowadzam dane...");
-    await emailInput.type(FB_EMAIL, { delay: 50 });
-    const passInput = await page.$('input[name="pass"], input[id="pass"]');
-    if (passInput) {
-      await passInput.type(FB_PASSWORD, { delay: 50 });
-      await page.keyboard.press("Enter");
-      await new Promise(r => setTimeout(r, 6000));
-    }
-  }
-
-  // Automatyczne 2FA
+  // --- KROK 4: AUTOMATYCZNE 2FA ---
   try {
     const input2FA = await page.$('input[type="text"], input[name="approvals_code"]');
     if (input2FA || page.url().includes("checkpoint") || page.url().includes("auth_platform")) {
       const code2FA = authenticator.generate(SECRET_2FA);
-      console.log(`Generowanie kodu 2FA: ${code2FA}`);
+      console.log(`Generuję i wpisuję kod 2FA: ${code2FA}`);
 
       if (input2FA) {
         await input2FA.type(code2FA, { delay: 100 });
@@ -164,7 +165,7 @@ server.listen(PORT, () => {
     }
   } catch (e) {}
 
-  // PIN E2EE 0612
+  // --- KROK 5: PIN E2EE 0612 ---
   try {
     if (KOD_PIN) {
       console.log(`Wprowadzanie kodu PIN (${KOD_PIN})...`);
@@ -176,7 +177,7 @@ server.listen(PORT, () => {
     }
   } catch (e) {}
 
-  console.log("Rozpoczynam obserwację czatu...");
+  console.log("Rozpoczynam obserwację wiadomości...");
 
   let przetworzoneWiadomosci = new Set();
 
