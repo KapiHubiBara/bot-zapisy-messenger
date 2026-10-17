@@ -1,4 +1,4 @@
-const login = require("ws3-fca");
+const login = require("./fca.js");
 const http = require("http");
 
 // ================= KONFIGURACJA =================
