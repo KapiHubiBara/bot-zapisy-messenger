@@ -9,7 +9,6 @@ const WYBRANY_PAKIET = "pakiet 1";
 const PORT = process.env.PORT || 3000;
 // ================================================
 
-// Serwer HTTP pod przetrzymanie usługi na Render.com
 const server = http.createServer((req, res) => {
   res.writeHead(200, { "Content-Type": "text/plain" });
   res.end("Bot Puppeteer dziala i obserwuje czat!\n");
@@ -47,7 +46,7 @@ try {
 
   const browser = await puppeteer.launch({
     headless: "new",
-    cacheDirectory: path.join(__dirname, ".cache", "puppeteer"),
+    cacheDirectory: path.resolve(__dirname, ".cache", "puppeteer"),
     args: [
       "--no-sandbox",
       "--disable-setuid-sandbox",
