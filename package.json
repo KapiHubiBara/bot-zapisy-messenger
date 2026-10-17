@@ -6,7 +6,6 @@
     "start": "node index.js"
   },
   "dependencies": {
-    "express": "^4.19.2",
-    "ws3-fca": "2.1.8"
+    "express": "^4.19.2"
   }
 }
