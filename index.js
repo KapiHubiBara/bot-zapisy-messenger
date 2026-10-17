@@ -2,13 +2,13 @@ const login = require("facebook-chat-api");
 const http = require("http");
 
 // ================= KONFIGURACJA =================
-const WYBRANY_PAKIET = "pakiet 1";             // Tekst do wysłania
-const ID_GRUPY = "645527998315352";            // ID Twojego czatu
-const SLOWO_KLUCZ = "zapisy";                  // Słowo aktywujące
+const WYBRANY_PAKIET = "pakiet 1";             // Wybrana odpowiedź na najbliższy poniedziałek
+const ID_GRUPY = "7081917691867251";           // ID Twojego czatu grupowego
+const SLOWO_KLUCZ = "zapisy";                  // Słowo kluczowe w wiadomości Piotra
 const PORT = process.env.PORT || 3000;
 // ================================================
 
-// Prosty serwer HTTP, aby Render traktował aplikację jako aktywną usługę WWW
+// Serwer HTTP utrzymujący aktywność usługi na Render.com
 const server = http.createServer((req, res) => {
   res.writeHead(200, { "Content-Type": "text/plain" });
   res.end("Bot dziala i nasluchuje!\n");
@@ -27,7 +27,7 @@ try {
     appState = JSON.parse(fs.readFileSync("appstate.json", "utf8"));
   }
 } catch (err) {
-  console.error("Błąd wczytywania ciasteczek appstate!", err);
+  console.error("Błąd wczytywania ciasteczek appstate! Sprawdź zmienną APPSTATE_JSON na Render.com.", err);
   process.exit(1);
 }
 
@@ -38,7 +38,7 @@ login({ appState: appState }, (err, api) => {
   }
 
   api.setOptions({ listenEvents: true, selfListen: false });
-  console.log("Bot zalogowany pomyślnie. Nasłuchuję wiadomości...");
+  console.log("Bot zalogowany pomyślnie. Nasłuchuję na grupie...");
 
   let wyslano = false;
 
