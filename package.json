@@ -6,6 +6,6 @@
     "start": "node index.js"
   },
   "dependencies": {
-    "ws3-fca": "^1.2.0"
+    "fca-project-origo": "latest"
   }
 }
