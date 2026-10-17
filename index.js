@@ -1,4 +1,5 @@
-const puppeteer = require("puppeteer");
+const puppeteer = require("puppeteer-core");
+const chromium = require("@sparticuz/chromium");
 const http = require("http");
 const fs = require("fs");
 
@@ -6,7 +7,7 @@ const fs = require("fs");
 const ID_GRUPY = "3225092577679626";
 const SLOWO_KLUCZ = "zapisy";
 const WYBRANY_PAKIET = "pakiet 1";
-const KOD_PIN = "062003"; // Np. "123456"
+const KOD_PIN = "062003"; // Wpisz swój 6-cyfrowy PIN Messenger
 const PORT = process.env.PORT || 3000;
 // ================================================
 
@@ -42,17 +43,15 @@ try {
 }
 
 (async () => {
-  console.log("Uruchamianie przeglądarki Headless Chrome...");
+  console.log("Uruchamianie silnika Chromium (@sparticuz)...");
+
+  const executablePath = await chromium.executablePath();
 
   const browser = await puppeteer.launch({
-    headless: "new",
-    args: [
-      "--no-sandbox",
-      "--disable-setuid-sandbox",
-      "--disable-dev-shm-usage",
-      "--disable-notifications",
-      "--disable-gpu"
-    ]
+    args: chromium.args,
+    defaultViewport: chromium.defaultViewport,
+    executablePath: executablePath,
+    headless: chromium.headless,
   });
 
   const page = await browser.newPage();
@@ -73,25 +72,24 @@ try {
     console.log("Strona załadowana (timeout sieci pominięty).");
   }
 
-  // --- OBSŁUGA MODALA Z PINEM ---
+  // --- OBSŁUGA PIN-U DLA SZYFROWANIA E2EE ---
   try {
-    console.log("Sprawdzanie, czy wyskoczył modal z kodem PIN...");
-    await page.waitForTimeout(3000);
+    console.log("Czekam 5s na ewentualny modal z kodem PIN...");
+    await new Promise(r => setTimeout(r, 5000));
 
-    // Szukamy pół do wpisania PIN-u lub wpisujemy go z klawiatury
     if (KOD_PIN && KOD_PIN !== "TUTAJ_WPISZ_SWOJ_6_CYFROWY_PIN") {
-      console.log("Wprowadzanie kodu PIN w celu odblokowania czatów...");
+      console.log("Wprowadzanie kodu PIN w celu odblokowania czatu...");
       for (let digit of KOD_PIN) {
         await page.keyboard.press(digit);
-        await page.waitForTimeout(200);
+        await new Promise(r => setTimeout(r, 300));
       }
-      console.log("PIN wprowadzony, czekam na odblokowanie widoku...");
-      await page.waitForTimeout(5000);
+      console.log("PIN wprowadzony. Oczekiwanie na odblokowanie rozmów...");
+      await new Promise(r => setTimeout(r, 5000));
     }
   } catch (e) {
-    console.log("Brak modala z PINem lub został już odblokowany.");
+    console.log("Brak modala PIN lub już odblokowano.");
   }
-  // ------------------------------
+  // ----------------------------------------
 
   console.log("Bot zalogowany na stronie. Rozpoczynam obserwację DOM czatu...");
 
