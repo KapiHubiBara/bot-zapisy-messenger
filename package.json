@@ -6,6 +6,6 @@
     "start": "node index.js"
   },
   "dependencies": {
-    "fca-unofficial": "github:fb-chat-api/fca-unofficial"
+    "fca-unofficial": "git+https://github.com/fb-chat-api/fca-unofficial.git"
   }
 }
