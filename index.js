@@ -8,7 +8,7 @@ const fs = require("fs");
 const ID_GRUPY = "3225092577679626";
 const SLOWO_KLUCZ = "zapisy";
 const WYBRANY_PAKIET = "pakiet 1";
-const KOD_PIN = "0612"; // Twój zaktualizowany PIN
+const KOD_PIN = "0612"; // Twój PIN Messenger
 const SECRET_2FA = "IDS7QFB4QZR5HHBLIZDO4FEIBUAHWQZO"; 
 const PORT = process.env.PORT || 3000;
 // ================================================
@@ -94,34 +94,44 @@ try {
     console.log("Strona załadowana (timeout pominięty).");
   }
 
-  // --- ODBLOKOWANIE / KLIKNIĘCIE "KONTYNUUJ" PO ODPRACOWANIU NA TELEFONIE ---
+  // --- AUTOMATYCZNE KLIKNIĘCIE PROFILU OLIWIER IRAŃSKI ---
   try {
-    await new Promise(r => setTimeout(r, 4000));
-    
-    // Szukamy niebieskich przycisków potwierdzenia (np. "Kontynuuj", "To ja", "Przejdź dalej")
-    const buttons = await page.$$('button, [role="button"], a');
-    for (let btn of buttons) {
-      const text = await page.evaluate(el => el.innerText, btn);
-      if (text && (text.toLowerCase().includes("kontynuuj") || text.toLowerCase().includes("to ja") || text.toLowerCase().includes("dalej"))) {
-        console.log(`Klikam przycisk odblokowujący: "${text}"`);
-        await btn.click();
-        await new Promise(r => setTimeout(r, 5000));
+    await new Promise(r => setTimeout(r, 3000));
+
+    // Szukamy kafelka/elementu z tekstem "Oliwier Irański" lub "Oliwier"
+    const elements = await page.$$('span, div, a, button');
+    let clicked = false;
+
+    for (let el of elements) {
+      const text = await page.evaluate(node => node.innerText, el);
+      if (text && text.includes("Oliwier Irański")) {
+        console.log("Wykryto profil Oliwiera! Klikam...");
+        await el.click();
+        clicked = true;
+        await new Promise(r => setTimeout(r, 4000));
         break;
       }
     }
-  } catch (e) {}
 
-  // --- AUTOMATYCZNE 2FA ---
+    if (!clicked) {
+      console.log("Profil Oliwiera nie wymusił kliknięcia lub strona przeszła dalej.");
+    }
+  } catch (e) {
+    console.log("Błąd podczas klikania profilu:", e.message);
+  }
+
+  // --- AUTOMATYCZNE 2FA / KOD Z GENERATORA ---
   try {
     const currentUrl = page.url();
-    if (currentUrl.includes("auth_platform") || currentUrl.includes("checkpoint")) {
-      console.log("Generowanie i wpisywanie kodu 2FA...");
+    if (currentUrl.includes("auth_platform") || currentUrl.includes("checkpoint") || (await page.$('input[type="text"]'))) {
       const code2FA = authenticator.generate(SECRET_2FA);
+      console.log(`Generuję kod 2FA dla Oliwiera: ${code2FA}`);
 
       const input2FA = await page.$('input[type="text"], input[name="approvals_code"]');
       if (input2FA) {
         await input2FA.type(code2FA, { delay: 100 });
         await page.keyboard.press("Enter");
+        console.log("Kod 2FA wysłany!");
         await new Promise(r => setTimeout(r, 6000));
       }
     }
