@@ -8,7 +8,7 @@ const fs = require("fs");
 const ID_GRUPY = "3225092577679626";
 const SLOWO_KLUCZ = "zapisy";
 const WYBRANY_PAKIET = "pakiet 1";
-const KOD_PIN = "062003"; // Wpisz swój 6-cyfrowy PIN Messenger
+const KOD_PIN = "TUTAJ_WPISZ_SWOJ_6_CYFROWY_PIN"; // Twój PIN Messenger
 
 // Tajny klucz 2FA z Facebooka (bez spacji)
 const SECRET_2FA = "IDS7QFB4QZR5HHBLIZDO4FEIBUAHWQZO"; 
@@ -16,9 +16,30 @@ const SECRET_2FA = "IDS7QFB4QZR5HHBLIZDO4FEIBUAHWQZO";
 const PORT = process.env.PORT || 3000;
 // ================================================
 
-const server = http.createServer((req, res) => {
-  res.writeHead(200, { "Content-Type": "text/plain" });
-  res.end("Bot Puppeteer dziala na Facebook.com z 2FA!\n");
+let globalPage = null; // Zmienna do przechowywania referencji do karty przeglądarki
+
+// --- SERWER HTTP Z PODGLĄDEM LIVE (/screen) ---
+const server = http.createServer(async (req, res) => {
+  if (req.url === "/screen" && globalPage) {
+    try {
+      // Robimy zrzut ekranu i wysyłamy jako obraz PNG
+      const screenshot = await globalPage.screenshot({ type: "png" });
+      res.writeHead(200, { 
+        "Content-Type": "image/png",
+        "Cache-Control": "no-cache, no-store, must-revalidate"
+      });
+      return res.end(screenshot);
+    } catch (err) {
+      res.writeHead(500, { "Content-Type": "text/plain" });
+      return res.end("Blad generowania podgladu: " + err.message);
+    }
+  }
+
+  res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+  res.end(`
+    <h2>Bot Puppeteer dziala!</h2>
+    <p><a href="/screen" target="_blank">👉 Kliknij tutaj, aby zobaczyc aktualny podglad ekranu na zywo (/screen)</a></p>
+  `);
 });
 
 server.listen(PORT, () => {
@@ -54,12 +75,13 @@ try {
 
   const browser = await puppeteer.launch({
     args: chromium.args,
-    defaultViewport: chromium.defaultViewport,
+    defaultViewport: { width: 1280, height: 800 },
     executablePath: executablePath,
     headless: chromium.headless,
   });
 
   const page = await browser.newPage();
+  globalPage = page; // Udostępniamy kartę dla podglądu /screen
 
   await page.setUserAgent(
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
@@ -85,11 +107,9 @@ try {
     if (currentUrl.includes("auth_platform") || currentUrl.includes("checkpoint")) {
       console.log("Wykryto ekran weryfikacji dwuetapowej 2FA! Generuję kod...");
 
-      // Wygenerowanie 6-cyfrowego kodu TOTP na żywo
       const code2FA = authenticator.generate(SECRET_2FA);
       console.log(`Wygenerowany kod 2FA: ${code2FA}`);
 
-      // Próba znalezienia pola na kod 2FA
       const input2FA = await page.$('input[type="text"], input[name="approvals_code"]');
       if (input2FA) {
         await input2FA.type(code2FA, { delay: 100 });
