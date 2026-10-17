@@ -17,19 +17,21 @@ const PORT = process.env.PORT || 3000;
 
 let globalPage = null;
 
-// HTTP Keep-Alive Server
+// --- SERWER HTTP + PEŁNA OBSŁUGA /screen ---
 const server = http.createServer(async (req, res) => {
   if (req.url.startsWith("/screen-img") && globalPage) {
     try {
-      const screenshot = await globalPage.screenshot({ type: "jpeg", quality: 60 });
-      res.writeHead(200, { 
+      const screenshot = await globalPage.screenshot({ type: "jpeg", quality: 65 });
+      res.writeHead(200, {
         "Content-Type": "image/jpeg",
-        "Cache-Control": "no-cache, no-store, must-revalidate"
+        "Cache-Control": "no-cache, no-store, must-revalidate",
+        "Pragma": "no-cache",
+        "Expires": "0"
       });
       return res.end(screenshot);
     } catch (err) {
       res.writeHead(500, { "Content-Type": "text/plain" });
-      return res.end("Blad podgladu: " + err.message);
+      return res.end("Błąd podglądu: " + err.message);
     }
   }
 
@@ -43,22 +45,26 @@ const server = http.createServer(async (req, res) => {
           <style>
             body { background: #111; color: #fff; font-family: sans-serif; text-align: center; margin: 0; padding: 20px; }
             img { max-width: 95vw; height: auto; border: 2px solid #444; border-radius: 8px; }
+            h3 { font-weight: 300; }
           </style>
         </head>
         <body>
-          <h3>Podgląd na żywo z przeglądarki bota</h3>
-          <img id="live" src="/screen-img?t=${Date.now()}" alt="Podglad..." />
+          <h3>Podgląd na żywo z przeglądarki bota (Render)</h3>
+          <img id="live" src="/screen-img?t=${Date.now()}" alt="Ładowanie podglądu..." />
           <script>
             const img = document.getElementById('live');
-            setInterval(() => { img.src = '/screen-img?t=' + Date.now(); }, 1000);
+            setInterval(() => { img.src = '/screen-img?t=' + Date.now(); }, 1200);
           </script>
         </body>
       </html>
     `);
   }
 
-  res.writeHead(200, { "Content-Type": "text/plain" });
-  res.end("Bot jest aktywny i czuwa (Keep-Alive OK).\n");
+  res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+  res.end(`
+    <h2>Bot Messenger jest aktywny!</h2>
+    <p><a href="/screen" target="_blank">👉 Kliknij tutaj, aby przejść do podglądu na żywo (/screen)</a></p>
+  `);
 });
 
 server.listen(PORT, () => {
@@ -66,7 +72,7 @@ server.listen(PORT, () => {
 });
 
 (async () => {
-  console.log("Uruchamianie silnika Chromium dla trybu natychmiastowego...");
+  console.log("Uruchamianie silnika Chromium...");
 
   const executablePath = await chromium.executablePath();
 
@@ -93,7 +99,7 @@ server.listen(PORT, () => {
 
   await new Promise(r => setTimeout(r, 3000));
 
-  // --- LOGOWANIE FORMULARZEM (JEŚLI NIEZALOGOWANY) ---
+  // --- LOGOWANIE FORMULARZEM (JEŚLI POTRZEBNE) ---
   try {
     const emailInput = await page.$('input[name="email"], input[id="email"]');
     const passInput = await page.$('input[name="pass"], input[id="pass"]');
@@ -101,10 +107,10 @@ server.listen(PORT, () => {
     if (emailInput && passInput && FB_EMAIL && FB_PASSWORD) {
       console.log("Logowanie do Facebooka...");
       await emailInput.click({ clickCount: 3 });
-      await emailInput.type(FB_EMAIL, { delay: 20 });
+      await emailInput.type(FB_EMAIL, { delay: 30 });
 
       await passInput.click({ clickCount: 3 });
-      await passInput.type(FB_PASSWORD, { delay: 20 });
+      await passInput.type(FB_PASSWORD, { delay: 30 });
 
       await page.keyboard.press("Enter");
       await new Promise(r => setTimeout(r, 5000));
@@ -116,7 +122,7 @@ server.listen(PORT, () => {
     const currentUrl = page.url();
     if (currentUrl.includes("auth_platform") || currentUrl.includes("checkpoint")) {
       const code2FA = authenticator.generate(SECRET_2FA);
-      console.log(`Wpisuję kod 2FA: ${code2FA}`);
+      console.log(`Wprowadzanie kodu 2FA: ${code2FA}`);
 
       const input2FA = await page.$('input[type="text"], input[name="approvals_code"]');
       if (input2FA) {
@@ -139,11 +145,10 @@ server.listen(PORT, () => {
     }
   } catch (e) {}
 
-  console.log("⚡ BOT JEST W PEŁNI ZALOGOWANY I NASŁUCHUJE W CZASIE RZECZYWISTYM! ⚡");
+  console.log("⚡ BOT NASŁUCHUJE W CZASIE RZECZYWISTYM! ⚡");
 
   let przetworzoneWiadomosci = new Set();
 
-  // Szybka pętla sprawdzająca DOM co 300 ms
   setInterval(async () => {
     try {
       const wiadomosci = await page.evaluate((keyword) => {
@@ -167,7 +172,7 @@ server.listen(PORT, () => {
         const ostatnia = wiadomosci[wiadomosci.length - 1];
 
         if (!przetworzoneWiadomosci.has(ostatnia.id)) {
-          console.log(`🚀 [WYKRYTO]: "${ostatnia.text}" - WYSYŁAM REAKCJĘ!`);
+          console.log(`🚀 [WYKRYTO]: "${ostatnia.text}" - WYSYŁAM ODPOWIEDŹ...`);
           przetworzoneWiadomosci.add(ostatnia.id);
 
           const inputSelector = 'div[role="textbox"], p[dir="auto"], div[contenteditable="true"]';
@@ -175,13 +180,19 @@ server.listen(PORT, () => {
 
           if (inputFound) {
             await page.click(inputSelector);
-            // Szybkie wklepanie pakietu i natychmiastowy Enter
-            await page.keyboard.type(WYBRANY_PAKIET, { delay: 10 });
+            await new Promise(r => setTimeout(r, 100));
+
+            // BAZOWE BEZBŁĘDNE WKLEJENIE TEKSTU BEZ PYSŁOMÓWEK
+            await page.evaluate((textToInsert) => {
+              document.execCommand('insertText', false, textToInsert);
+            }, WYBRANY_PAKIET);
+
+            await new Promise(r => setTimeout(r, 100));
             await page.keyboard.press("Enter");
-            console.log(`SUKCES! Wysłano: "${WYBRANY_PAKIET}"`);
+            console.log(`SUKCES! Wysłano dokładnie: "${WYBRANY_PAKIET}"`);
           }
         }
       }
     } catch (err) {}
-  }, 300);
+  }, 400);
 })();
