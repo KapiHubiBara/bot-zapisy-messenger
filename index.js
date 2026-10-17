@@ -30,11 +30,10 @@ const server = http.createServer(async (req, res) => {
       return res.end(screenshot);
     } catch (err) {
       res.writeHead(500, { "Content-Type": "text/plain" });
-      return res.end("Blad podgladu: " + err.message);
+      return res.end("Błąd podglądu: " + err.message);
     }
   }
 
-  // Zawsze udostępniamy działający link do podglądu
   res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
   res.end(`
     <!DOCTYPE html>
@@ -45,7 +44,6 @@ const server = http.createServer(async (req, res) => {
           body { background: #111; color: #fff; font-family: sans-serif; text-align: center; margin: 0; padding: 20px; }
           img { max-width: 95vw; height: auto; border: 2px solid #444; border-radius: 8px; }
           h3 { font-weight: 300; margin-bottom: 10px; }
-          p { color: #888; font-size: 14px; }
         </style>
       </head>
       <body>
@@ -93,14 +91,29 @@ server.listen(PORT, () => {
 
   await new Promise(r => setTimeout(r, 3000));
 
-  // 1. DANE LOGOWANIA
-  const emailSelector = 'input[name="email"], input[id="email"]';
-  const passSelector = 'input[name="pass"], input[id="pass"]';
+  // --- DYNAMICZNY SYSTEM LOGOWANIA I ODNALEZIENIA CZATU ---
+  let isLogged = false;
 
-  try {
+  for (let attempt = 1; attempt <= 20; attempt++) {
+    const url = page.url();
+
+    // Sprawdzenie czy dotarliśmy do okna wiadomości
+    const hasChatBox = await page.$('div[role="textbox"], p[dir="auto"], div[contenteditable="true"]');
+    if (url.includes("/messages/t/") && hasChatBox) {
+      console.log(" Green Light: Bot pomyślnie załadował okno czatu!");
+      isLogged = true;
+      break;
+    }
+
+    console.log(`[Weryfikacja - Próba ${attempt}/20] Stan strony: ${url}`);
+
+    // 1. Wpisanie loginu i hasła (jeśli widzimy formularz)
+    const emailSelector = 'input[name="email"], input[id="email"]';
+    const passSelector = 'input[name="pass"], input[id="pass"]';
     const emailInput = await page.$(emailSelector);
+
     if (emailInput && FB_EMAIL && FB_PASSWORD) {
-      console.log("Wpisuję e-mail i hasło...");
+      console.log("Formularz logowania widoczny. Wpisuję e-mail i hasło...");
       await page.click(emailSelector, { clickCount: 3 });
       await page.type(emailSelector, FB_EMAIL, { delay: 30 });
 
@@ -108,58 +121,63 @@ server.listen(PORT, () => {
       await page.type(passSelector, FB_PASSWORD, { delay: 30 });
 
       await page.keyboard.press("Enter");
-      console.log("Formularz wysłany. Czekam na weryfikację...");
-      await new Promise(r => setTimeout(r, 6000));
+      await new Promise(r => setTimeout(r, 5000));
+      continue;
     }
-  } catch (e) {}
 
-  // 2. AUTOMATYCZNE 2FA Z OTLIB (JEŚLI FORMUŁA WYMAGA KODU)
-  try {
-    const input2FA = await page.$('input[type="text"], input[name="approvals_code"]');
-    if (input2FA || page.url().includes("checkpoint") || page.url().includes("auth_platform")) {
+    // 2. Wpisanie kodu 2FA (jeśli jest pole)
+    const input2FA = await page.$('input[name="approvals_code"], input[type="text"]');
+    if (input2FA && (url.includes("checkpoint") || url.includes("auth_platform"))) {
       const code2FA = authenticator.generate(SECRET_2FA);
-      console.log(`Wykryto 2FA! Generuję kod: ${code2FA}`);
-
-      if (input2FA) {
-        await input2FA.type(code2FA, { delay: 50 });
-        await page.keyboard.press("Enter");
-        await new Promise(r => setTimeout(r, 5000));
-      }
+      console.log(`Wpisuję kod 2FA (${code2FA})...`);
+      await input2FA.type(code2FA, { delay: 50 });
+      await page.keyboard.press("Enter");
+      await new Promise(r => setTimeout(r, 5000));
+      continue;
     }
-  } catch (e) {}
 
-  // 3. KLIKNIĘCIE "KONTYNUUJ" PO POTWIERDZENIU NA TELEFONIE
-  for (let i = 0; i < 3; i++) {
-    try {
-      const clicked = await page.evaluate(() => {
-        const btns = Array.from(document.querySelectorAll('button, div[role="button"], a'));
-        const target = btns.find(b => b.innerText && (b.innerText.toLowerCase().includes("kontynuuj") || b.innerText.toLowerCase().includes("continue")));
-        if (target) {
-          target.click();
-          return true;
-        }
-        return false;
+    // 3. Szukanie i klikanie przycisków odblokowujących (Kontynuuj / Zapisz przeglądarkę / To ja)
+    const clickedBtn = await page.evaluate(() => {
+      const btns = Array.from(document.querySelectorAll('button, div[role="button"], a, input[type="submit"]'));
+      const target = btns.find(b => {
+        const txt = (b.innerText || b.value || "").toLowerCase();
+        return txt.includes("kontynuuj") || txt.includes("continue") || 
+               txt.includes("to ja") || txt.includes("zapisz") || 
+               txt.includes("pamiętaj") || txt.includes("tak");
       });
-      if (clicked) {
-        console.log("Kliknięto 'Kontynuuj'!");
-        await new Promise(r => setTimeout(r, 4000));
+      if (target) {
+        target.click();
+        return true;
       }
-    } catch (e) {}
-  }
+      return false;
+    });
 
-  // 4. PIN E2EE 0612
-  try {
+    if (clickedBtn) {
+      console.log(" Kliknięto przycisk przejściowy (Kontynuuj / Zapisz)!");
+      await new Promise(r => setTimeout(r, 4000));
+      continue;
+    }
+
+    // 4. Obsługa PIN E2EE 0612 (jeśli pojawi się ekran PIN)
     if (KOD_PIN) {
-      console.log(`Wprowadzanie PIN E2EE (${KOD_PIN})...`);
       for (let digit of KOD_PIN) {
         await page.keyboard.press(digit);
         await new Promise(r => setTimeout(r, 100));
       }
-      await new Promise(r => setTimeout(r, 3000));
     }
-  } catch (e) {}
 
-  console.log("⚡ BOT NASŁUCHUJE CZATU! ⚡");
+    // Co 3 próby odświeżamy bezpośrednio adres grupy
+    if (attempt % 3 === 0) {
+      console.log("Przeładowuję stronę czatu...");
+      try {
+        await page.goto(targetUrl, { waitUntil: "domcontentloaded", timeout: 15000 });
+      } catch (e) {}
+    } else {
+      await new Promise(r => setTimeout(r, 4000));
+    }
+  }
+
+  console.log(" Rozpoczynam nasłuchiwanie wiadomości w grupie...");
 
   let przetworzoneWiadomosci = new Set();
 
