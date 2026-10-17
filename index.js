@@ -7,7 +7,7 @@ const fs = require("fs");
 const ID_GRUPY = "3225092577679626";
 const SLOWO_KLUCZ = "zapisy";
 const WYBRANY_PAKIET = "pakiet 1";
-const KOD_PIN = "TUTAJ_WPISZ_SWOJ_6_CYFROWY_PIN"; // Wpisz Twój PIN
+const KOD_PIN = "062003"; // Twój 6-cyfrowy PIN Messenger
 const PORT = process.env.PORT || 3000;
 // ================================================
 
@@ -34,7 +34,7 @@ try {
     domain: (c.domain || ".messenger.com").startsWith(".") ? c.domain || ".messenger.com" : "." + c.domain,
     path: c.path || "/",
     httpOnly: c.httpOnly || false,
-    secure: c.secure || true,
+    secure: true,
     sameSite: "Lax"
   }));
 } catch (err) {
@@ -69,44 +69,56 @@ try {
   try {
     await page.goto(targetUrl, { waitUntil: "networkidle2", timeout: 60000 });
   } catch (e) {
-    console.log("Strona załadowana (timeout sieci pominięty).");
+    console.log("Strona załadowana (timeout pominięty).");
   }
+
+  // --- AUTOMATYCZNE POKONANIE EKRANU LOGOWANIA / "KONTYNUUJ JAKO" ---
+  try {
+    await new Promise(r => setTimeout(r, 3000));
+    
+    // Kliknięcie w przycisk "Kontynuuj jako..." jeśli się pojawi
+    const continueBtn = await page.$('[role="button"], button, div[tabindex="0"]');
+    if (continueBtn) {
+      const btnText = await page.evaluate(el => el.innerText, continueBtn);
+      if (btnText.toLowerCase().includes("kontynuuj") || btnText.toLowerCase().includes("continue")) {
+        console.log(`Wykryto ekran przejścia: "${btnText}". Klikam...`);
+        await continueBtn.click();
+        await new Promise(r => setTimeout(r, 5000));
+      }
+    }
+  } catch (e) {}
 
   // --- OBSŁUGA PIN-U DLA SZYFROWANIA E2EE ---
   try {
-    console.log("Czekam 5s na ewentualny modal z kodem PIN...");
-    await new Promise(r => setTimeout(r, 5000));
+    console.log("Czekam na ewentualny modal z kodem PIN...");
+    await new Promise(r => setTimeout(r, 4000));
 
     if (KOD_PIN && KOD_PIN !== "TUTAJ_WPISZ_SWOJ_6_CYFROWY_PIN") {
-      console.log("Wprowadzanie kodu PIN w celu odblokowania czatu...");
+      console.log("Wprowadzanie kodu PIN...");
       for (let digit of KOD_PIN) {
         await page.keyboard.press(digit);
-        await new Promise(r => setTimeout(r, 300));
+        await new Promise(r => setTimeout(r, 200));
       }
-      console.log("PIN wprowadzony. Oczekiwanie na odblokowanie rozmów...");
+      console.log("PIN wprowadzony, czekam na odblokowanie...");
       await new Promise(r => setTimeout(r, 5000));
     }
-  } catch (e) {
-    console.log("Brak modala PIN lub już odblokowano.");
-  }
+  } catch (e) {}
 
-  console.log("Bot zalogowany na stronie. Rozpoczynam obserwację wiadomości...");
+  console.log("Rozpoczynam obserwację wiadomości...");
 
   let przetworzoneWiadomosci = new Set();
 
-  // Diagnostyka: co 10 sekund wypisujemy w logach Render tekst z widoku
   setInterval(async () => {
     try {
       const pageText = await page.evaluate(() => document.body.innerText);
-      const shortText = pageText.replace(/\s+/g, ' ').slice(0, 300);
-      console.log(`[PODGLĄD STRONY]: ${shortText}...`);
+      const shortText = pageText.replace(/\s+/g, ' ').slice(0, 150);
+      console.log(`[WIDOK CZATU]: ${shortText}...`);
     } catch (e) {}
   }, 10000);
 
   setInterval(async () => {
     try {
       const wiadomosci = await page.evaluate((keyword) => {
-        // Pobieramy całą widoczną treść kontenera czatu
         const elements = document.querySelectorAll('div[dir="auto"], span[dir="auto"], [role="row"]');
         const znalezione = [];
 
@@ -127,10 +139,9 @@ try {
         const ostatnia = wiadomosci[wiadomosci.length - 1];
 
         if (!przetworzoneWiadomosci.has(ostatnia.id)) {
-          console.log(`[WYKRYTO WIADOMOŚĆ]: "${ostatnia.text}"`);
+          console.log(`[NOWA WIADOMOŚĆ]: "${ostatnia.text}"`);
           przetworzoneWiadomosci.add(ostatnia.id);
 
-          // Próba kliknięcia w pole wpisywania
           const inputSelector = 'p[dir="auto"], [role="textbox"], div[contenteditable="true"]';
           const inputFound = await page.$(inputSelector);
 
@@ -140,7 +151,7 @@ try {
             await page.keyboard.press("Enter");
             console.log(`SUKCES! Wysłano odpowiedź: "${WYBRANY_PAKIET}"`);
           } else {
-            console.log("NIE ZNALAZŁEM POLA TEKSTOWEGO DO WPISANIA ODPOWIEDZI!");
+            console.log("Nie znaleziono pola tekstowego.");
           }
         }
       }
