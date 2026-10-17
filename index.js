@@ -3,7 +3,7 @@ const http = require("http");
 
 // ================= KONFIGURACJA =================
 const WYBRANY_PAKIET = "pakiet 1";
-const ID_GRUPY = "7081917691867251";
+const ID_GRUPY = "3225092577679626";
 const SLOWO_KLUCZ = "zapisy";
 const PORT = process.env.PORT || 3000;
 // ================================================
