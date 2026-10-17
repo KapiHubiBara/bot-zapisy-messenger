@@ -6,6 +6,6 @@
     "start": "node index.js"
   },
   "dependencies": {
-    "@pitu/facebook-chat-api": "^1.0.0"
+    "facebook-chat-api": "^1.8.0"
   }
 }
