@@ -1,4 +1,4 @@
-const login = require("fca-project-origo");
+const login = require("ws3-fca");
 const http = require("http");
 
 // ================= KONFIGURACJA =================
