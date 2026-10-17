@@ -2,7 +2,7 @@
 Jestem statystykiem w lidze siatkówki. Na każdą kolejkę obowiązują zapisy kto pierwszy na grupie na messengerze. Z racji tego, że nie zawsze mam telefon pod ręką, a zapisy są o różnych godzinach, to mogę nie zdążyć. Stąd ten bot
 
 
-# 🤖 Bot do Automatycznych Zapisów na Messengerze (One-Shot)
+# Bot do Automatycznych Zapisów na Messengerze (One-Shot)
 
 Automatyczny bot w Node.js & Puppeteer przeznaczony do błyskawicznego odpowiadania na wiadomości w wybranej grupie lub czacie na Messengerze. 
 
@@ -14,7 +14,7 @@ Bot działa w **trybie bezawaryjnym (One-Shot)**:
 
 ---
 
-## 📋 Wymagania wstępne
+## Wymagania wstępne
 
 Zanim uruchomisz bota, upewnij się, że masz zainstalowane:
 1. **Node.js** (wersja 18 lub nowsza) – [Pobierz Node.js](https://nodejs.org/)
@@ -22,7 +22,7 @@ Zanim uruchomisz bota, upewnij się, że masz zainstalowane:
 
 ---
 
-## 🚀 Pierwsze uruchomienie (Instalacja)
+## Pierwsze uruchomienie (Instalacja)
 
 1. Otwórz projekt w edytorze kodu lub przejdź do folderu w terminalu.
 2. Zainstaluj wymagane biblioteki, wpisując w terminalu polecenie:
@@ -38,7 +38,7 @@ npm install puppeteer otplib
 
 ---
 
-## ⚙️ Konfiguracja Bota (`index.js`)
+## Konfiguracja Bota (`index.js`)
 
 Wszystkie ustawienia znajdują się na samym początku pliku `index.js` w sekcji **KONFIGURACJA**:
 
@@ -70,7 +70,7 @@ const WYBRANY_PAKIET = "pakiet 1"; // Przykładowa odpowiedź
 
 ---
 
-## 🏃 Jak uruchomić Bota?
+## Jak uruchomić Bota?
 
 1. Otwórz terminal w folderze projektu.
 2. Wpisz polecenie:
@@ -89,7 +89,7 @@ node index.js
 
 ---
 
-## 🥷 Tryb Ukryty (Działanie cicho w tle)
+## Tryb Ukryty (Działanie cicho w tle)
 
 Domyślnie podczas pracy bota na ekranie pojawia się okno Chrome (`headless: false`). 
 
