@@ -1,14 +1,14 @@
-const login = require("facebook-chat-api");
+const login = require("ws3-fca");
 const http = require("http");
 
 // ================= KONFIGURACJA =================
-const WYBRANY_PAKIET = "pakiet 1";             // Wybrana odpowiedź na najbliższy poniedziałek
-const ID_GRUPY = "7081917691867251";           // ID Twojego czatu grupowego
-const SLOWO_KLUCZ = "zapisy";                  // Słowo kluczowe w wiadomości Piotra
+const WYBRANY_PAKIET = "pakiet 1";
+const ID_GRUPY = "7081917691867251";
+const SLOWO_KLUCZ = "zapisy";
 const PORT = process.env.PORT || 3000;
 // ================================================
 
-// Serwer HTTP utrzymujący aktywność usługi na Render.com
+// Serwer HTTP pod przetrzymanie usługi na Render.com
 const server = http.createServer((req, res) => {
   res.writeHead(200, { "Content-Type": "text/plain" });
   res.end("Bot dziala i nasluchuje!\n");
@@ -27,17 +27,25 @@ try {
     appState = JSON.parse(fs.readFileSync("appstate.json", "utf8"));
   }
 } catch (err) {
-  console.error("Błąd wczytywania ciasteczek appstate! Sprawdź zmienną APPSTATE_JSON na Render.com.", err);
+  console.error("Błąd wczytywania ciasteczek appstate!", err);
   process.exit(1);
 }
 
-login({ appState: appState }, (err, api) => {
+// Konfiguracja opcji logowania ignorująca ostrzeżenia lokalizacji
+const options = {
+  logLevel: "silent",
+  forceLogin: true,
+  listenEvents: true,
+  selfListen: false,
+  userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+};
+
+login({ appState: appState }, options, (err, api) => {
   if (err) {
     console.error("Błąd logowania do Messengera:", err);
     return;
   }
 
-  api.setOptions({ listenEvents: true, selfListen: false });
   console.log("Bot zalogowany pomyślnie. Nasłuchuję na grupie...");
 
   let wyslano = false;
