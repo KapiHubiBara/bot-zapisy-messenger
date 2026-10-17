@@ -1,6 +1,7 @@
 const puppeteer = require("puppeteer");
 const http = require("http");
 const path = require("path");
+const fs = require("fs");
 
 // ================= KONFIGURACJA =================
 const ID_GRUPY = "3225092577679626";
@@ -22,7 +23,6 @@ let cookies;
 try {
   let appStateRaw = process.env.APPSTATE_JSON;
   if (!appStateRaw) {
-    const fs = require("fs");
     appStateRaw = fs.readFileSync("appstate.json", "utf8");
   }
   const parsed = JSON.parse(appStateRaw);
@@ -41,12 +41,37 @@ try {
   process.exit(1);
 }
 
+// Funkcja pomocnicza do szukania binarnego pliku Chrome
+function findExecutablePath(dir) {
+  if (!fs.existsSync(dir)) return null;
+  const files = fs.readdirSync(dir);
+  for (const file of files) {
+    const fullPath = path.join(dir, file);
+    if (file === "chrome" && fs.statSync(fullPath).isFile()) {
+      return fullPath;
+    }
+    if (fs.statSync(fullPath).isDirectory()) {
+      const found = findExecutablePath(fullPath);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
 (async () => {
   console.log("Uruchamianie przeglądarki Headless Chrome...");
 
-  const browser = await puppeteer.launch({
+  const cacheDir = path.resolve(__dirname, "puppeteer-cache");
+  const executablePath = findExecutablePath(cacheDir);
+
+  if (executablePath) {
+    console.log(`Znaleziono plik wykonywalny Chrome: ${executablePath}`);
+  } else {
+    console.warn("Nie znaleziono własnego Chrome, próbuję uruchomić domyślny...");
+  }
+
+  const launchOptions = {
     headless: "new",
-    cacheDirectory: path.resolve(__dirname, ".cache", "puppeteer"),
     args: [
       "--no-sandbox",
       "--disable-setuid-sandbox",
@@ -54,7 +79,13 @@ try {
       "--disable-notifications",
       "--disable-gpu"
     ]
-  });
+  };
+
+  if (executablePath) {
+    launchOptions.executablePath = executablePath;
+  }
+
+  const browser = await puppeteer.launch(launchOptions);
 
   const page = await browser.newPage();
 
