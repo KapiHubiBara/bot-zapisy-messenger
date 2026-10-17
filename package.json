@@ -6,6 +6,6 @@
     "start": "node index.js"
   },
   "dependencies": {
-    "fca-unofficial": "https://github.com/fb-chat-api/fca-unofficial/archive/refs/heads/master.tar.gz"
+    "fca-project-origo": "https://github.com/HarryDaor/fca-project-origo/archive/refs/heads/main.tar.gz"
   }
 }
