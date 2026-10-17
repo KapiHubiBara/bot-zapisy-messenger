@@ -17,7 +17,6 @@ const PORT = process.env.PORT || 3000;
 
 let globalPage = null;
 
-// --- SERWER HTTP + PEŁNA OBSŁUGA /screen ---
 const server = http.createServer(async (req, res) => {
   if (req.url.startsWith("/screen-img") && globalPage) {
     try {
@@ -53,18 +52,15 @@ const server = http.createServer(async (req, res) => {
           <img id="live" src="/screen-img?t=${Date.now()}" alt="Ładowanie podglądu..." />
           <script>
             const img = document.getElementById('live');
-            setInterval(() => { img.src = '/screen-img?t=' + Date.now(); }, 1200);
+            setInterval(() => { img.src = '/screen-img?t=' + Date.now(); }, 1000);
           </script>
         </body>
       </html>
     `);
   }
 
-  res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-  res.end(`
-    <h2>Bot Messenger jest aktywny!</h2>
-    <p><a href="/screen" target="_blank">👉 Kliknij tutaj, aby przejść do podglądu na żywo (/screen)</a></p>
-  `);
+  res.writeHead(200, { "Content-Type": "text/plain" });
+  res.end("Bot jest aktywny i czuwa.\n");
 });
 
 server.listen(PORT, () => {
@@ -93,38 +89,64 @@ server.listen(PORT, () => {
   const targetUrl = `https://www.facebook.com/messages/t/${ID_GRUPY}`;
   console.log(`Otwieranie czatu FB: ${targetUrl}`);
 
+  // Używamy domcontentloaded + krótki timeout, aby strona nigdy nie wisiała
   try {
-    await page.goto(targetUrl, { waitUntil: "networkidle2", timeout: 60000 });
-  } catch (e) {}
+    await page.goto(targetUrl, { waitUntil: "domcontentloaded", timeout: 25000 });
+  } catch (e) {
+    console.log("Strona przekroczyła czas na pełne załadowanie, ale kontynuuję pracę...");
+  }
 
   await new Promise(r => setTimeout(r, 3000));
 
-  // --- LOGOWANIE FORMULARZEM (JEŚLI POTRZEBNE) ---
+  // --- 1. ODRAZU OBSŁUGUJEMY FORMULARZ LOGOWANIA ---
+  console.log("Sprawdzam obecność pola logowania...");
+  const emailSelector = 'input[name="email"], input[id="email"]';
+  const passSelector = 'input[name="pass"], input[id="pass"]';
+
   try {
-    const emailInput = await page.$('input[name="email"], input[id="email"]');
-    const passInput = await page.$('input[name="pass"], input[id="pass"]');
+    const emailInput = await page.$(emailSelector);
+    if (emailInput && FB_EMAIL && FB_PASSWORD) {
+      console.log("Wpisuję dane logowania (Email + Hasło)...");
+      await page.click(emailSelector, { clickCount: 3 });
+      await page.type(emailSelector, FB_EMAIL, { delay: 30 });
 
-    if (emailInput && passInput && FB_EMAIL && FB_PASSWORD) {
-      console.log("Logowanie do Facebooka...");
-      await emailInput.click({ clickCount: 3 });
-      await emailInput.type(FB_EMAIL, { delay: 30 });
-
-      await passInput.click({ clickCount: 3 });
-      await passInput.type(FB_PASSWORD, { delay: 30 });
+      await page.click(passSelector, { clickCount: 3 });
+      await page.type(passSelector, FB_PASSWORD, { delay: 30 });
 
       await page.keyboard.press("Enter");
+      console.log("Wysłano dane. Czekam 6s na przetworzenie...");
+      await new Promise(r => setTimeout(r, 6000));
+    }
+  } catch (e) {
+    console.log("Błąd wpisywania formularza:", e.message);
+  }
+
+  // --- 2. JEŚLI WYSTĄPIŁ PRZYCISK KONTYNUUJ ---
+  try {
+    const clickedBtn = await page.evaluate(() => {
+      const btns = Array.from(document.querySelectorAll('button, div[role="button"], a'));
+      const target = btns.find(b => b.innerText && b.innerText.trim().toLowerCase().includes("kontynuuj"));
+      if (target) {
+        target.click();
+        return true;
+      }
+      return false;
+    });
+    if (clickedBtn) {
+      console.log("Kliknięto przycisk Kontynuuj!");
       await new Promise(r => setTimeout(r, 5000));
     }
   } catch (e) {}
 
-  // --- 2FA ---
+  // --- 3. WPROWADZANIE KODU 2FA (TYLKO NA EKRANIE CHECKPOINT/2FA) ---
   try {
-    const currentUrl = page.url();
-    if (currentUrl.includes("auth_platform") || currentUrl.includes("checkpoint")) {
+    const isCheckpoint = page.url().includes("checkpoint") || page.url().includes("auth_platform");
+    const input2FA = await page.$('input[name="approvals_code"]');
+    
+    if (isCheckpoint || input2FA) {
       const code2FA = authenticator.generate(SECRET_2FA);
-      console.log(`Wprowadzanie kodu 2FA: ${code2FA}`);
+      console.log(`Ekran 2FA wykryty! Wpisuję kod: ${code2FA}`);
 
-      const input2FA = await page.$('input[type="text"], input[name="approvals_code"]');
       if (input2FA) {
         await input2FA.type(code2FA, { delay: 50 });
         await page.keyboard.press("Enter");
@@ -133,7 +155,7 @@ server.listen(PORT, () => {
     }
   } catch (e) {}
 
-  // --- PIN E2EE ---
+  // --- 4. PIN E2EE ---
   try {
     if (KOD_PIN) {
       console.log(`Wprowadzanie PIN E2EE (${KOD_PIN})...`);
@@ -145,7 +167,7 @@ server.listen(PORT, () => {
     }
   } catch (e) {}
 
-  console.log("⚡ BOT NASŁUCHUJE W CZASIE RZECZYWISTYM! ⚡");
+  console.log("⚡ BOT W PEŁNI GOTOWY — NASŁUCHUJE CZATU! ⚡");
 
   let przetworzoneWiadomosci = new Set();
 
@@ -182,7 +204,6 @@ server.listen(PORT, () => {
             await page.click(inputSelector);
             await new Promise(r => setTimeout(r, 100));
 
-            // BAZOWE BEZBŁĘDNE WKLEJENIE TEKSTU BEZ PYSŁOMÓWEK
             await page.evaluate((textToInsert) => {
               document.execCommand('insertText', false, textToInsert);
             }, WYBRANY_PAKIET);
@@ -194,5 +215,5 @@ server.listen(PORT, () => {
         }
       }
     } catch (err) {}
-  }, 400);
+  }, 300);
 })();
