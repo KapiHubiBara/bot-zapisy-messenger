@@ -1,5 +1,6 @@
 const puppeteer = require("puppeteer");
 const http = require("http");
+const path = require("path");
 
 // ================= KONFIGURACJA =================
 const ID_GRUPY = "3225092577679626";
@@ -26,8 +27,7 @@ try {
     appStateRaw = fs.readFileSync("appstate.json", "utf8");
   }
   const parsed = JSON.parse(appStateRaw);
-  
-  // Konwersja appstate do formatu ciasteczek Puppeteera
+
   cookies = parsed.map(c => ({
     name: c.key || c.name,
     value: c.value,
@@ -47,6 +47,7 @@ try {
 
   const browser = await puppeteer.launch({
     headless: "new",
+    cacheDirectory: path.join(__dirname, ".cache", "puppeteer"),
     args: [
       "--no-sandbox",
       "--disable-setuid-sandbox",
@@ -67,7 +68,7 @@ try {
 
   const targetUrl = `https://www.messenger.com/t/${ID_GRUPY}`;
   console.log(`Otwieranie czatu: ${targetUrl}`);
-  
+
   try {
     await page.goto(targetUrl, { waitUntil: "networkidle2", timeout: 60000 });
   } catch (e) {
@@ -78,11 +79,9 @@ try {
 
   let wyslano = false;
 
-  // Odpytywanie drzewa DOM strony co 1.5 sekundy w poszukiwaniu nowych wiadomości
   setInterval(async () => {
     try {
       const messages = await page.evaluate(() => {
-        // Pobieramy bąbelki wiadomości widoczne w czacie
         const elements = document.querySelectorAll('[role="row"], [role="article"], div[dir="auto"]');
         const texts = [];
         elements.forEach(el => {
@@ -93,12 +92,11 @@ try {
 
       if (messages.length > 0) {
         const lastMessage = messages[messages.length - 1];
-        
+
         if (lastMessage.toLowerCase().includes(SLOWO_KLUCZ.toLowerCase()) && !wyslano) {
           console.log(`Wykryto słowo kluczowe w wiadomości: "${lastMessage}"`);
           wyslano = true;
 
-          // Wpisywanie wiadomości w pole tekstowe Messengera
           const inputSelector = '[role="textbox"], div[contenteditable="true"]';
           await page.waitForSelector(inputSelector, { timeout: 5000 });
           await page.click(inputSelector);
@@ -108,8 +106,6 @@ try {
           console.log(`SUKCES! Wysłano odpowiedź: "${WYBRANY_PAKIET}" na czacie.`);
         }
       }
-    } catch (err) {
-      // Ignorujemy tymczasowe błędy podczas przeładowania elementów DOM
-    }
+    } catch (err) {}
   }, 1500);
 })();
