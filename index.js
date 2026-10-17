@@ -37,7 +37,6 @@ login({ appState: appState }, (err, api) => {
     return;
   }
 
-  // Ustawienie opcji po zalogowaniu
   api.setOptions({
     listenEvents: true,
     selfListen: false,
