@@ -6,7 +6,6 @@
     "start": "node index.js"
   },
   "dependencies": {
-    "express": "^4.19.2",
-    "ws3-fca": "git+https://github.com/HarryDaor/fca-project-origo.git"
+    "express": "^4.19.2"
   }
 }
