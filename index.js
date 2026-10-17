@@ -31,20 +31,20 @@ try {
   process.exit(1);
 }
 
-// Konfiguracja opcji logowania ignorująca ostrzeżenia lokalizacji
-const options = {
-  logLevel: "silent",
-  forceLogin: true,
-  listenEvents: true,
-  selfListen: false,
-  userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-};
-
-login({ appState: appState }, options, (err, api) => {
+login({ appState: appState }, (err, api) => {
   if (err) {
     console.error("Błąd logowania do Messengera:", err);
     return;
   }
+
+  // Ustawienie opcji po zalogowaniu
+  api.setOptions({
+    listenEvents: true,
+    selfListen: false,
+    logLevel: "silent",
+    forceLogin: true,
+    userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+  });
 
   console.log("Bot zalogowany pomyślnie. Nasłuchuję na grupie...");
 
