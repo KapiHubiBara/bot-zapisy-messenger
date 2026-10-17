@@ -10,7 +10,9 @@ const SLOWO_KLUCZ = "zapisy";
 const WYBRANY_PAKIET = "pakiet 1";
 const KOD_PIN = "0612";
 const SECRET_2FA = "IDS7QFB4QZR5HHBLIZDO4FEIBUAHWQZO";
-const HASLO_FB = process.env.FB_PASSWORD || ""; 
+
+const FB_EMAIL = process.env.FB_EMAIL || "";
+const FB_PASSWORD = process.env.FB_PASSWORD || "";
 const PORT = process.env.PORT || 3000;
 // ================================================
 
@@ -63,35 +65,13 @@ const server = http.createServer(async (req, res) => {
   res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
   res.end(`
     <h2>Bot Puppeteer dziala!</h2>
-    <p><a href="/screen" target="_blank">👉 Kliknij tutaj, aby zobaczyc aktualny podglad ekranu na zywo (/screen)</a></p>
+    <p><a href="/screen" target="_blank">👉 Podgląd na żywo (/screen)</a></p>
   `);
 });
 
 server.listen(PORT, () => {
   console.log(`Serwer HTTP uruchomiony na porcie ${PORT}`);
 });
-
-let cookies;
-try {
-  let appStateRaw = process.env.APPSTATE_JSON;
-  if (!appStateRaw) {
-    appStateRaw = fs.readFileSync("appstate.json", "utf8");
-  }
-  const parsed = JSON.parse(appStateRaw);
-
-  cookies = parsed.map(c => ({
-    name: c.key || c.name,
-    value: c.value,
-    domain: ".facebook.com",
-    path: c.path || "/",
-    httpOnly: c.httpOnly || false,
-    secure: true,
-    sameSite: "Lax"
-  }));
-} catch (err) {
-  console.error("Błąd wczytywania ciasteczek!", err);
-  process.exit(1);
-}
 
 (async () => {
   console.log("Uruchamianie silnika Chromium...");
@@ -112,9 +92,31 @@ try {
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
   );
 
-  console.log("Wgrywanie ciasteczek...");
-  await page.setCookie(...cookies);
+  // Wczytywanie ciasteczek jeśli istnieją
+  try {
+    let appStateRaw = process.env.APPSTATE_JSON;
+    if (!appStateRaw && fs.existsSync("appstate.json")) {
+      appStateRaw = fs.readFileSync("appstate.json", "utf8");
+    }
+    if (appStateRaw) {
+      const parsed = JSON.parse(appStateRaw);
+      const cookies = parsed.map(c => ({
+        name: c.key || c.name,
+        value: c.value,
+        domain: ".facebook.com",
+        path: c.path || "/",
+        httpOnly: c.httpOnly || false,
+        secure: true,
+        sameSite: "Lax"
+      }));
+      await page.setCookie(...cookies);
+      console.log("Ciasteczka wczytane.");
+    }
+  } catch (err) {
+    console.log("Pomijam ciasteczka:", err.message);
+  }
 
+  // PRZEJŚCIE PROSTO NA CZAT
   const targetUrl = `https://www.facebook.com/messages/t/${ID_GRUPY}`;
   console.log(`Otwieranie czatu FB: ${targetUrl}`);
 
@@ -124,62 +126,40 @@ try {
     console.log("Strona załadowana (timeout pominięty).");
   }
 
-  // --- ODBLOKOWANIE: KLIKNIĘCIE W PROFIL OLIWIERA ---
-  try {
-    await new Promise(r => setTimeout(r, 3000));
+  await new Promise(r => setTimeout(r, 3000));
 
-    // Wyszukiwanie głównego przycisku/linku z kafelka "Oliwier Irański"
-    const clicked = await page.evaluate(() => {
-      const allElements = Array.from(document.querySelectorAll('div, a, button, span'));
-      const targetNode = allElements.find(el => el.innerText && el.innerText.trim() === "Oliwier Irański");
-      if (targetNode) {
-        // Znajdujemy klikalny kontener rodzica (link lub przycisk)
-        const clickable = targetNode.closest('a, button, [role="button"]') || targetNode;
-        clickable.click();
-        return true;
-      }
-      return false;
-    });
-
-    if (clicked) {
-      console.log("Pomyślnie kliknięto w kafelek profilu Oliwiera!");
-      await new Promise(r => setTimeout(r, 4000));
-    } else {
-      console.log("Nie znaleziono kafelka profilu Oliwiera lub profil był już wybrany.");
-    }
-  } catch (e) {
-    console.log("Błąd podczas klikania profilu:", e.message);
-  }
-
-  // --- PRÓBA WPISANIA HASŁA (JEŚLI POJAWI SIĘ FORMULARZ) ---
-  try {
-    const passwordInput = await page.$('input[type="password"]');
-    if (passwordInput && HASLO_FB) {
-      console.log("Wykryto pole na hasło! Wprowadzam hasło do FB...");
-      await passwordInput.type(HASLO_FB, { delay: 100 });
+  // BEZPOŚREDNIE LOGOWANIE FORMULARZEM (JEŚLI POTRZEBNE)
+  const emailInput = await page.$('input[name="email"], input[id="email"]');
+  if (emailInput && FB_EMAIL && FB_PASSWORD) {
+    console.log("Formularz logowania wykryty! Wprowadzam dane...");
+    await emailInput.type(FB_EMAIL, { delay: 50 });
+    const passInput = await page.$('input[name="pass"], input[id="pass"]');
+    if (passInput) {
+      await passInput.type(FB_PASSWORD, { delay: 50 });
       await page.keyboard.press("Enter");
+      console.log("Dane wysłane, czekam na odpowiedź serwera...");
       await new Promise(r => setTimeout(r, 6000));
     }
-  } catch (e) {}
+  }
 
-  // --- AUTOMATYCZNE 2FA / KOD Z GENERATORA ---
+  // AUTOMATYCZNE ODBLOKOWANIE 2FA
   try {
     const currentUrl = page.url();
     const input2FA = await page.$('input[type="text"], input[name="approvals_code"]');
     if (currentUrl.includes("auth_platform") || currentUrl.includes("checkpoint") || input2FA) {
       const code2FA = authenticator.generate(SECRET_2FA);
-      console.log(`Generuję kod 2FA dla Oliwiera: ${code2FA}`);
+      console.log(`Generuję kod 2FA: ${code2FA}`);
 
       if (input2FA) {
         await input2FA.type(code2FA, { delay: 100 });
         await page.keyboard.press("Enter");
-        console.log("Kod 2FA wysłany!");
+        console.log("Kod 2FA pomyślnie przesłany!");
         await new Promise(r => setTimeout(r, 6000));
       }
     }
   } catch (e) {}
 
-  // --- WPROWADZANIE PIN-U 0612 ---
+  // WPROWADZANIE PIN-U 0612
   try {
     if (KOD_PIN) {
       console.log(`Wprowadzanie kodu PIN (${KOD_PIN})...`);
@@ -191,7 +171,7 @@ try {
     }
   } catch (e) {}
 
-  console.log("Rozpoczynam obserwację wiadomości w czacie...");
+  console.log("Rozpoczynam obserwację czatu...");
 
   let przetworzoneWiadomosci = new Set();
 
