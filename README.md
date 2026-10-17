@@ -10,6 +10,7 @@ Bot działa w **trybie bezawaryjnym (One-Shot)**:
 - Zlicza obecną historię wiadomości na starcie (ignoruje stare wiadomości).
 - Czeka na pojawienie się słowa kluczowego (np. `zapisy`).
 - Po wykryciu nowej wiadomości natychmiast wysyła ustawioną odpowiedź (np. `pakiet 1`).
+- Nie należy przewijać chatu, po prostu odpalić skrypt i czekać bez żadnego kombinowania
 - **Po wysłaniu wiadomości automatycznie wyłącza się i zamyka przeglądarkę**, wykluczając ryzyko spamu czy pętli.
 
 ---
