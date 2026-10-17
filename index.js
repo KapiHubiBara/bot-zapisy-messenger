@@ -1,9 +1,9 @@
-const login = require("./fca.js");
+const login = require("ws3-fca");
 const http = require("http");
 
 // ================= KONFIGURACJA =================
 const WYBRANY_PAKIET = "pakiet 1";
-const ID_GRUPY = "3225092577679626";
+const ID_GRUPY = "7081917691867251";
 const SLOWO_KLUCZ = "zapisy";
 const PORT = process.env.PORT || 3000;
 // ================================================
@@ -30,23 +30,30 @@ try {
   process.exit(1);
 }
 
-login({ appState: appState }, (err, api) => {
+const options = {
+  logLevel: "silent",
+  forceLogin: true,
+  listenEvents: true,
+  selfListen: false,
+  userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+};
+
+login({ appState: appState }, options, (err, api) => {
   if (err) {
     console.error("Błąd logowania do Messengera:", err);
     return;
   }
 
-  console.log("Bot zalogowany pomyślnie. Nasłuchuję na grupie...");
+  console.log("Bot zalogowany pomyślnie! Nasłuchuję połączenia MQTT...");
 
   api.listenMqtt((err, message) => {
     if (err) return;
 
     if (message && message.body) {
-      console.log(`Odebrano wiadomość: "${message.body}"`);
-      const tresc = message.body.toLowerCase();
+      console.log(`[ODCZYT] Odebrano wiadomość: "${message.body}"`);
 
-      if (tresc.includes(SLOWO_KLUCZ.toLowerCase())) {
-        console.log("Wykryto słowo kluczowe! Wysyłam uwagę...");
+      if (message.threadID === ID_GRUPY && message.body.toLowerCase().includes(SLOWO_KLUCZ.toLowerCase())) {
+        console.log("Wykryto słowo kluczowe! Wysyłam wiadomość...");
 
         api.sendMessage(WYBRANY_PAKIET, ID_GRUPY, (err) => {
           if (err) {
