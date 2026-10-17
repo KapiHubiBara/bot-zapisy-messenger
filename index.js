@@ -8,7 +8,7 @@ const fs = require("fs");
 const ID_GRUPY = "3225092577679626";
 const SLOWO_KLUCZ = "zapisy";
 const WYBRANY_PAKIET = "pakiet 1";
-const KOD_PIN = "0612"; // Twój PIN Messenger
+const KOD_PIN = "0612";
 const SECRET_2FA = "IDS7QFB4QZR5HHBLIZDO4FEIBUAHWQZO"; 
 const PORT = process.env.PORT || 3000;
 // ================================================
@@ -16,18 +16,49 @@ const PORT = process.env.PORT || 3000;
 let globalPage = null;
 
 const server = http.createServer(async (req, res) => {
-  if (req.url === "/screen" && globalPage) {
+  // Zwracanie czystego pliku obrazu z unikalnym timestampem
+  if (req.url.startsWith("/screen-img") && globalPage) {
     try {
-      const screenshot = await globalPage.screenshot({ type: "png" });
+      const screenshot = await globalPage.screenshot({ type: "jpeg", quality: 70 });
       res.writeHead(200, { 
-        "Content-Type": "image/png",
-        "Cache-Control": "no-cache, no-store, must-revalidate"
+        "Content-Type": "image/jpeg",
+        "Cache-Control": "no-cache, no-store, must-revalidate",
+        "Pragma": "no-cache",
+        "Expires": "0"
       });
       return res.end(screenshot);
     } catch (err) {
       res.writeHead(500, { "Content-Type": "text/plain" });
       return res.end("Blad podgladu: " + err.message);
     }
+  }
+
+  // Interfejs do podglądu z auto-odświeżaniem co 1,5s
+  if (req.url === "/screen") {
+    res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+    return res.end(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Podgląd Bota Messenger LIVE</title>
+          <style>
+            body { background: #111; color: #fff; font-family: sans-serif; text-align: center; margin: 0; padding: 20px; }
+            img { max-width: 95vw; height: auto; border: 2px solid #444; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); }
+            h3 { margin-bottom: 15px; font-weight: 300; }
+          </style>
+        </head>
+        <body>
+          <h3>Podgląd na żywo z przeglądarki bota (Render)</h3>
+          <img id="live" src="/screen-img?t=${Date.now()}" alt="Podglad na zywo..." />
+          <script>
+            const img = document.getElementById('live');
+            setInterval(() => {
+              img.src = '/screen-img?t=' + Date.now();
+            }, 1500);
+          </script>
+        </body>
+      </html>
+    `);
   }
 
   res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
@@ -98,7 +129,6 @@ try {
   try {
     await new Promise(r => setTimeout(r, 3000));
 
-    // Szukamy kafelka/elementu z tekstem "Oliwier Irański" lub "Oliwier"
     const elements = await page.$$('span, div, a, button');
     let clicked = false;
 
@@ -112,13 +142,7 @@ try {
         break;
       }
     }
-
-    if (!clicked) {
-      console.log("Profil Oliwiera nie wymusił kliknięcia lub strona przeszła dalej.");
-    }
-  } catch (e) {
-    console.log("Błąd podczas klikania profilu:", e.message);
-  }
+  } catch (e) {}
 
   // --- AUTOMATYCZNE 2FA / KOD Z GENERATORA ---
   try {
