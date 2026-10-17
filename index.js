@@ -1,229 +1,112 @@
-const puppeteer = require("puppeteer-core");
-const chromium = require("@sparticuz/chromium");
-const { authenticator } = require("otplib");
-const http = require("http");
+const puppeteer = require("puppeteer");
 
 // ================= KONFIGURACJA =================
-const ID_GRUPY = "3225092577679626";
-const SLOWO_KLUCZ = "zapisy";
-const WYBRANY_PAKIET = "pakiet 1";
-const KOD_PIN = "0612";
-const SECRET_2FA = "IDS7QFB4QZR5HHBLIZDO4FEIBUAHWQZO";
-
-const FB_EMAIL = process.env.FB_EMAIL || "";
-const FB_PASSWORD = process.env.FB_PASSWORD || "";
-const PORT = process.env.PORT || 3000;
+const ID_GRUPY = "3225092577679626"; // ID wybranego czatu
+const SLOWO_KLUCZ = "zapisy";          // Słowo wyzwalające odpowiedź
+const WYBRANY_PAKIET = "pakiet 1";      // Treść wysyłanej odpowiedzi
 // ================================================
 
-let globalPage = null;
-
-const server = http.createServer(async (req, res) => {
-  if (req.url.startsWith("/screen-img") && globalPage) {
-    try {
-      const screenshot = await globalPage.screenshot({ type: "jpeg", quality: 65 });
-      res.writeHead(200, {
-        "Content-Type": "image/jpeg",
-        "Cache-Control": "no-cache, no-store, must-revalidate",
-        "Pragma": "no-cache",
-        "Expires": "0"
-      });
-      return res.end(screenshot);
-    } catch (err) {
-      res.writeHead(500, { "Content-Type": "text/plain" });
-      return res.end("Błąd podglądu: " + err.message);
-    }
-  }
-
-  res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-  res.end(`
-    <!DOCTYPE html>
-    <html>
-      <head>
-        <title>Podgląd Bota Messenger LIVE</title>
-        <style>
-          body { background: #111; color: #fff; font-family: sans-serif; text-align: center; margin: 0; padding: 20px; }
-          img { max-width: 95vw; height: auto; border: 2px solid #444; border-radius: 8px; }
-          h3 { font-weight: 300; margin-bottom: 10px; }
-        </style>
-      </head>
-      <body>
-        <h3>Podgląd na żywo z przeglądarki bota (Render)</h3>
-        <p>Strona odświeża się automatycznie co sekundę</p>
-        <img id="live" src="/screen-img?t=${Date.now()}" alt="Ładowanie podglądu..." />
-        <script>
-          const img = document.getElementById('live');
-          setInterval(() => { img.src = '/screen-img?t=' + Date.now(); }, 1000);
-        </script>
-      </body>
-    </html>
-  `);
-});
-
-server.listen(PORT, () => {
-  console.log(`Serwer HTTP uruchomiony na porcie ${PORT}`);
-});
-
 (async () => {
-  console.log("Uruchamianie silnika Chromium...");
-
-  const executablePath = await chromium.executablePath();
+  console.log("Uruchamianie bota w trybie błyskawicznym (One-Shot)...");
 
   const browser = await puppeteer.launch({
-    args: chromium.args,
-    defaultViewport: { width: 1280, height: 800 },
-    executablePath: executablePath,
-    headless: chromium.headless,
+    headless: false, // Zmień na "new" jeśli chcesz, aby przeglądarka działała w tle
+    userDataDir: "./fb_session",
+    args: ["--no-sandbox", "--disable-setuid-sandbox"]
   });
 
   const page = await browser.newPage();
-  globalPage = page;
-
-  await page.setUserAgent(
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-  );
+  await page.setViewport({ width: 1280, height: 800 });
 
   const targetUrl = `https://www.facebook.com/messages/t/${ID_GRUPY}`;
-  console.log(`Otwieranie czatu FB: ${targetUrl}`);
+  console.log(`Otwieranie czatu: ${targetUrl}`);
 
   try {
-    await page.goto(targetUrl, { waitUntil: "domcontentloaded", timeout: 25000 });
+    await page.goto(targetUrl, { waitUntil: "domcontentloaded" });
   } catch (e) {}
 
-  await new Promise(r => setTimeout(r, 3000));
+  // Krótka pauza na wyrenderowanie wiadomości z zapamiętanej sesji
+  await new Promise(r => setTimeout(r, 2000));
 
-  // --- DYNAMICZNY SYSTEM LOGOWANIA I ODNALEZIENIA CZATU ---
-  let isLogged = false;
+  // KROK 1: Zliczenie obecnych wystąpień słowa kluczowego w czacie
+  const initialCount = await page.evaluate((keyword) => {
+    const mainChat = document.querySelector('[role="main"]');
+    if (!mainChat) return 0;
 
-  for (let attempt = 1; attempt <= 20; attempt++) {
-    const url = page.url();
+    const elements = Array.from(mainChat.querySelectorAll('div[dir="auto"], span[dir="auto"]'));
+    return elements.filter(el => (el.innerText || "").toLowerCase().includes(keyword.toLowerCase())).length;
+  }, SLOWO_KLUCZ);
 
-    // Sprawdzenie czy dotarliśmy do okna wiadomości
-    const hasChatBox = await page.$('div[role="textbox"], p[dir="auto"], div[contenteditable="true"]');
-    if (url.includes("/messages/t/") && hasChatBox) {
-      console.log(" Green Light: Bot pomyślnie załadował okno czatu!");
-      isLogged = true;
-      break;
-    }
+  console.log(`BOT READY! Wykryto ${initialCount} dotychczasowych wiadomości z "${SLOWO_KLUCZ}".`);
+  console.log(" Czekam na nową wiadomość...");
 
-    console.log(`[Weryfikacja - Próba ${attempt}/20] Stan strony: ${url}`);
+  let isProcessing = false;
 
-    // 1. Wpisanie loginu i hasła (jeśli widzimy formularz)
-    const emailSelector = 'input[name="email"], input[id="email"]';
-    const passSelector = 'input[name="pass"], input[id="pass"]';
-    const emailInput = await page.$(emailSelector);
+  // KROK 2: NASŁUCHIWANIE NA WZROST LICZBY WIADOMOŚCI
+  const intervalId = setInterval(async () => {
+    if (isProcessing) return;
+    isProcessing = true;
 
-    if (emailInput && FB_EMAIL && FB_PASSWORD) {
-      console.log("Formularz logowania widoczny. Wpisuję e-mail i hasło...");
-      await page.click(emailSelector, { clickCount: 3 });
-      await page.type(emailSelector, FB_EMAIL, { delay: 30 });
-
-      await page.click(passSelector, { clickCount: 3 });
-      await page.type(passSelector, FB_PASSWORD, { delay: 30 });
-
-      await page.keyboard.press("Enter");
-      await new Promise(r => setTimeout(r, 5000));
-      continue;
-    }
-
-    // 2. Wpisanie kodu 2FA (jeśli jest pole)
-    const input2FA = await page.$('input[name="approvals_code"], input[type="text"]');
-    if (input2FA && (url.includes("checkpoint") || url.includes("auth_platform"))) {
-      const code2FA = authenticator.generate(SECRET_2FA);
-      console.log(`Wpisuję kod 2FA (${code2FA})...`);
-      await input2FA.type(code2FA, { delay: 50 });
-      await page.keyboard.press("Enter");
-      await new Promise(r => setTimeout(r, 5000));
-      continue;
-    }
-
-    // 3. Szukanie i klikanie przycisków odblokowujących (Kontynuuj / Zapisz przeglądarkę / To ja)
-    const clickedBtn = await page.evaluate(() => {
-      const btns = Array.from(document.querySelectorAll('button, div[role="button"], a, input[type="submit"]'));
-      const target = btns.find(b => {
-        const txt = (b.innerText || b.value || "").toLowerCase();
-        return txt.includes("kontynuuj") || txt.includes("continue") || 
-               txt.includes("to ja") || txt.includes("zapisz") || 
-               txt.includes("pamiętaj") || txt.includes("tak");
-      });
-      if (target) {
-        target.click();
-        return true;
-      }
-      return false;
-    });
-
-    if (clickedBtn) {
-      console.log(" Kliknięto przycisk przejściowy (Kontynuuj / Zapisz)!");
-      await new Promise(r => setTimeout(r, 4000));
-      continue;
-    }
-
-    // 4. Obsługa PIN E2EE 0612 (jeśli pojawi się ekran PIN)
-    if (KOD_PIN) {
-      for (let digit of KOD_PIN) {
-        await page.keyboard.press(digit);
-        await new Promise(r => setTimeout(r, 100));
-      }
-    }
-
-    // Co 3 próby odświeżamy bezpośrednio adres grupy
-    if (attempt % 3 === 0) {
-      console.log("Przeładowuję stronę czatu...");
-      try {
-        await page.goto(targetUrl, { waitUntil: "domcontentloaded", timeout: 15000 });
-      } catch (e) {}
-    } else {
-      await new Promise(r => setTimeout(r, 4000));
-    }
-  }
-
-  console.log(" Rozpoczynam nasłuchiwanie wiadomości w grupie...");
-
-  let przetworzoneWiadomosci = new Set();
-
-  setInterval(async () => {
     try {
-      const wiadomosci = await page.evaluate((keyword) => {
-        const elements = document.querySelectorAll('div[dir="auto"], span[dir="auto"], [role="row"]');
-        const znalezione = [];
+      const currentUrl = page.url();
 
-        elements.forEach((el, index) => {
-          const text = el.innerText || "";
-          if (text.toLowerCase().includes(keyword.toLowerCase())) {
-            znalezione.push({
-              id: `${index}_${text.trim()}`,
-              text: text.trim()
-            });
-          }
-        });
+      // Powrót do grupy jeśli zmieniono czat
+      if (!currentUrl.includes(ID_GRUPY)) {
+        await page.goto(targetUrl, { waitUntil: "domcontentloaded" });
+        await new Promise(r => setTimeout(r, 1500));
+        isProcessing = false;
+        return;
+      }
 
-        return znalezione;
+      // Liczymy aktualną liczbę wystąpień słowa kluczowego w głównym oknie
+      const currentCount = await page.evaluate((keyword) => {
+        const mainChat = document.querySelector('[role="main"]');
+        if (!mainChat) return 0;
+
+        const elements = Array.from(mainChat.querySelectorAll('div[dir="auto"], span[dir="auto"]'));
+        return elements.filter(el => (el.innerText || "").toLowerCase().includes(keyword.toLowerCase())).length;
       }, SLOWO_KLUCZ);
 
-      if (wiadomosci.length > 0) {
-        const ostatnia = wiadomosci[wiadomosci.length - 1];
+      // Gdy spłynie nowa wiadomość zawierająca słowo kluczowe
+      if (currentCount > initialCount) {
+        console.log(`[NOWA WIADOMOŚĆ]: Wzrost z ${initialCount} do ${currentCount}. Wysyłam pakiet...`);
 
-        if (!przetworzoneWiadomosci.has(ostatnia.id)) {
-          console.log(`🚀 [NOWA WIADOMOŚĆ]: "${ostatnia.text}"`);
-          przetworzoneWiadomosci.add(ostatnia.id);
+        const inputSelector = '[role="main"] div[role="textbox"], [role="main"] p[dir="auto"], [role="main"] div[contenteditable="true"]';
+        const inputFound = await page.$(inputSelector);
 
-          const inputSelector = 'div[role="textbox"], p[dir="auto"], div[contenteditable="true"]';
-          const inputFound = await page.$(inputSelector);
+        if (inputFound) {
+          // Czyszczenie pola
+          await page.evaluate((selector) => {
+            const input = document.querySelector(selector);
+            if (input) {
+              input.focus();
+              document.execCommand('selectAll', false, null);
+              document.execCommand('delete', false, null);
+            }
+          }, inputSelector);
 
-          if (inputFound) {
-            await page.click(inputSelector);
-            await new Promise(r => setTimeout(r, 100));
+          await new Promise(r => setTimeout(r, 50));
 
-            await page.evaluate((textToInsert) => {
-              document.execCommand('insertText', false, textToInsert);
-            }, WYBRANY_PAKIET);
+          // Wklejenie tekstu pakietu
+          await page.evaluate((textToInsert) => {
+            document.execCommand('insertText', false, textToInsert);
+          }, WYBRANY_PAKIET);
 
-            await new Promise(r => setTimeout(r, 100));
-            await page.keyboard.press("Enter");
-            console.log(`SUKCES! Wysłano: "${WYBRANY_PAKIET}"`);
-          }
+          await new Promise(r => setTimeout(r, 100));
+          await page.keyboard.press("Enter");
+          console.log(`SUKCES! Wysłano odpowiedź: "${WYBRANY_PAKIET}"`);
+
+          // ZAKOŃCZENIE PRACY BOTA
+          clearInterval(intervalId);
+          console.log("Zadanie wykonane. Wyłączam bota.");
+          await new Promise(r => setTimeout(r, 1500));
+          await browser.close();
+          process.exit(0);
         }
       }
-    } catch (err) {}
-  }, 400);
+    } catch (err) {
+    } finally {
+      isProcessing = false;
+    }
+  }, 200);
 })();
