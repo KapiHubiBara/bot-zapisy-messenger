@@ -2,7 +2,6 @@ const puppeteer = require("puppeteer-core");
 const chromium = require("@sparticuz/chromium");
 const { authenticator } = require("otplib");
 const http = require("http");
-const fs = require("fs");
 
 // ================= KONFIGURACJA =================
 const ID_GRUPY = "3225092577679626";
@@ -63,10 +62,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-  res.end(`
-    <h2>Bot Puppeteer dziala!</h2>
-    <p><a href="/screen" target="_blank">👉 Podgląd na żywo (/screen)</a></p>
-  `);
+  res.end(`<h2>Bot Puppeteer dziala!</h2><p><a href="/screen" target="_blank">👉 Podgląd na żywo (/screen)</a></p>`);
 });
 
 server.listen(PORT, () => {
@@ -74,7 +70,7 @@ server.listen(PORT, () => {
 });
 
 (async () => {
-  console.log("Uruchamianie silnika Chromium...");
+  console.log("Uruchamianie silnika Chromium (czysta sesja)...");
 
   const executablePath = await chromium.executablePath();
 
@@ -92,74 +88,62 @@ server.listen(PORT, () => {
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
   );
 
-  // Wczytywanie ciasteczek jeśli istnieją
+  // 1. Otwieramy czystą stronę logowania
+  console.log("Otwieranie formularza logowania Facebooka...");
   try {
-    let appStateRaw = process.env.APPSTATE_JSON;
-    if (!appStateRaw && fs.existsSync("appstate.json")) {
-      appStateRaw = fs.readFileSync("appstate.json", "utf8");
-    }
-    if (appStateRaw) {
-      const parsed = JSON.parse(appStateRaw);
-      const cookies = parsed.map(c => ({
-        name: c.key || c.name,
-        value: c.value,
-        domain: ".facebook.com",
-        path: c.path || "/",
-        httpOnly: c.httpOnly || false,
-        secure: true,
-        sameSite: "Lax"
-      }));
-      await page.setCookie(...cookies);
-      console.log("Ciasteczka wczytane.");
-    }
-  } catch (err) {
-    console.log("Pomijam ciasteczka:", err.message);
-  }
+    await page.goto("https://www.facebook.com/login", { waitUntil: "networkidle2", timeout: 60000 });
+  } catch (e) {}
 
-  // PRZEJŚCIE PROSTO NA CZAT
-  const targetUrl = `https://www.facebook.com/messages/t/${ID_GRUPY}`;
-  console.log(`Otwieranie czatu FB: ${targetUrl}`);
+  await new Promise(r => setTimeout(r, 2000));
 
+  // Akceptacja cookies
   try {
-    await page.goto(targetUrl, { waitUntil: "networkidle2", timeout: 60000 });
-  } catch (e) {
-    console.log("Strona załadowana (timeout pominięty).");
-  }
+    const allowCookiesBtn = await page.$('button[data-cookiebanner="accept_button"], button[title="Allow all cookies"]');
+    if (allowCookiesBtn) {
+      await allowCookiesBtn.click();
+      await new Promise(r => setTimeout(r, 2000));
+    }
+  } catch (e) {}
 
-  await new Promise(r => setTimeout(r, 3000));
+  // 2. Wpisanie E-maila i Hasła
+  if (FB_EMAIL && FB_PASSWORD) {
+    console.log("Wprowadzanie danych logowania (Email + Hasło)...");
+    const emailInput = await page.$('input[name="email"]');
+    const passInput = await page.$('input[name="pass"]');
 
-  // BEZPOŚREDNIE LOGOWANIE FORMULARZEM (JEŚLI POTRZEBNE)
-  const emailInput = await page.$('input[name="email"], input[id="email"]');
-  if (emailInput && FB_EMAIL && FB_PASSWORD) {
-    console.log("Formularz logowania wykryty! Wprowadzam dane...");
-    await emailInput.type(FB_EMAIL, { delay: 50 });
-    const passInput = await page.$('input[name="pass"], input[id="pass"]');
-    if (passInput) {
+    if (emailInput && passInput) {
+      await emailInput.type(FB_EMAIL, { delay: 50 });
       await passInput.type(FB_PASSWORD, { delay: 50 });
       await page.keyboard.press("Enter");
-      console.log("Dane wysłane, czekam na odpowiedź serwera...");
+      console.log("Formularz wysłany. Oczekiwanie na przejście/2FA...");
       await new Promise(r => setTimeout(r, 6000));
     }
   }
 
-  // AUTOMATYCZNE ODBLOKOWANIE 2FA
+  // 3. Automatyczne obsłużenie 2FA (TOTP)
   try {
-    const currentUrl = page.url();
     const input2FA = await page.$('input[type="text"], input[name="approvals_code"]');
-    if (currentUrl.includes("auth_platform") || currentUrl.includes("checkpoint") || input2FA) {
+    if (input2FA || page.url().includes("checkpoint") || page.url().includes("auth_platform")) {
       const code2FA = authenticator.generate(SECRET_2FA);
-      console.log(`Generuję kod 2FA: ${code2FA}`);
+      console.log(`Generowanie kodu 2FA: ${code2FA}`);
 
       if (input2FA) {
         await input2FA.type(code2FA, { delay: 100 });
         await page.keyboard.press("Enter");
-        console.log("Kod 2FA pomyślnie przesłany!");
+        console.log("Kod 2FA wysłany!");
         await new Promise(r => setTimeout(r, 6000));
       }
     }
   } catch (e) {}
 
-  // WPROWADZANIE PIN-U 0612
+  // 4. Wejście na czat grupy
+  const targetUrl = `https://www.facebook.com/messages/t/${ID_GRUPY}`;
+  console.log(`Przechodzę do grupy: ${targetUrl}`);
+  try {
+    await page.goto(targetUrl, { waitUntil: "networkidle2", timeout: 60000 });
+  } catch (e) {}
+
+  // 5. PIN E2EE 0612
   try {
     if (KOD_PIN) {
       console.log(`Wprowadzanie kodu PIN (${KOD_PIN})...`);
@@ -171,7 +155,7 @@ server.listen(PORT, () => {
     }
   } catch (e) {}
 
-  console.log("Rozpoczynam obserwację czatu...");
+  console.log("Rozpoczynam obserwację wiadomości...");
 
   let przetworzoneWiadomosci = new Set();
 
