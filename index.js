@@ -8,7 +8,7 @@ const fs = require("fs");
 const ID_GRUPY = "3225092577679626";
 const SLOWO_KLUCZ = "zapisy";
 const WYBRANY_PAKIET = "pakiet 1";
-const KOD_PIN = "TUTAJ_WPISZ_SWOJ_6_CYFROWY_PIN"; // Twój PIN Messenger
+const KOD_PIN = "062003"; // Twój PIN Messenger
 
 // Tajny klucz 2FA z Facebooka (bez spacji)
 const SECRET_2FA = "IDS7QFB4QZR5HHBLIZDO4FEIBUAHWQZO"; 
