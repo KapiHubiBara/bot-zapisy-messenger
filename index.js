@@ -1,10 +1,22 @@
 const login = require("@pitu/facebook-chat-api");
+const http = require("http");
 
 // ================= KONFIGURACJA =================
 const WYBRANY_PAKIET = "pakiet 1";             // Tekst do wysłania
 const ID_GRUPY = "645527998315352";            // ID Twojego czatu
-const SLOWO_KLUCZ = "zapisy";                  // Słowo, po którym bot odpisze
+const SLOWO_KLUCZ = "zapisy";                  // Słowo aktywujące
+const PORT = process.env.PORT || 3000;
 // ================================================
+
+// Prosty serwer HTTP, aby Render traktował aplikację jako aktywną usługę WWW
+const server = http.createServer((req, res) => {
+  res.writeHead(200, { "Content-Type": "text/plain" });
+  res.end("Bot dziala i nasluchuje!\n");
+});
+
+server.listen(PORT, () => {
+  console.log(`Serwer HTTP uruchomiony na porcie ${PORT}`);
+});
 
 let appState;
 try {
@@ -26,7 +38,7 @@ login({ appState: appState }, (err, api) => {
   }
 
   api.setOptions({ listenEvents: true, selfListen: false });
-  console.log("Bot uruchomiony pomyślnie. Nasłuchuję wiadomości...");
+  console.log("Bot zalogowany pomyślnie. Nasłuchuję wiadomości...");
 
   let wyslano = false;
 
