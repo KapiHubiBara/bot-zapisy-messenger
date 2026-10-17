@@ -95,77 +95,50 @@ server.listen(PORT, () => {
     await page.goto(targetUrl, { waitUntil: "networkidle2", timeout: 60000 });
   } catch (e) {}
 
-  await new Promise(r => setTimeout(r, 4000));
+  await new Promise(r => setTimeout(r, 3000));
 
-  // --- KROK 1: FIZYCZNE KLIKNIĘCIE W PROFIL OLIWIER IRAŃSKI ---
+  // --- 1. OBSŁUGA STANDARDOWEGO FORMULARZA LOGOWANIA ---
   try {
-    const box = await page.evaluate(() => {
-      const allDivs = Array.from(document.querySelectorAll('span, div'));
-      const target = allDivs.find(el => el.innerText && el.innerText.trim() === "Oliwier Irański");
-      if (target) {
-        const rect = target.getBoundingClientRect();
-        return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
-      }
-      return null;
-    });
+    const emailInput = await page.$('input[name="email"], input[id="email"]');
+    const passInput = await page.$('input[name="pass"], input[id="pass"]');
 
-    if (box) {
-      console.log(`Znaleziono pozycję profilu Oliwiera (X: ${box.x}, Y: ${box.y}). Klikam myszą...`);
-      await page.mouse.click(box.x, box.y);
-      await new Promise(r => setTimeout(r, 4000));
-    } else {
-      console.log("Nie znaleziono etykiety 'Oliwier Irański' na stronie.");
+    if (emailInput && passInput && FB_EMAIL && FB_PASSWORD) {
+      console.log("Formularz logowania wykryty. Czyszczę i wprowadzam E-mail oraz Hasło...");
+      
+      // Czyszczenie i wpisanie e-maila
+      await emailInput.click({ clickCount: 3 });
+      await emailInput.type(FB_EMAIL, { delay: 50 });
+
+      // Czyszczenie i wpisanie hasła
+      await passInput.click({ clickCount: 3 });
+      await passInput.type(FB_PASSWORD, { delay: 50 });
+
+      await page.keyboard.press("Enter");
+      console.log("Dane wysłane, czekam na odpowiedź...");
+      await new Promise(r => setTimeout(r, 6000));
     }
   } catch (e) {
-    console.log("Błąd podczas klikania profilu myszą:", e.message);
+    console.log("Błąd podczas wpisywania danych:", e.message);
   }
 
-  // --- KROK 2: PRZYCISK KONTYNUUJ (JEŚLI POJAWI SIĘ NIEBIESKI PRZYCISK) ---
+  // --- 2. AUTOMATYCZNE ODBLOKOWANIE 2FA (TYLKO JEŚLI JESTEŚMY NA EKRANIE CHECKPOINT) ---
   try {
-    const continueBox = await page.evaluate(() => {
-      const btns = Array.from(document.querySelectorAll('button, div[role="button"], a'));
-      const target = btns.find(b => b.innerText && b.innerText.trim().toLowerCase().includes("kontynuuj"));
-      if (target) {
-        const rect = target.getBoundingClientRect();
-        return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
-      }
-      return null;
-    });
-
-    if (continueBox) {
-      console.log(`Klikam przycisk Kontynuuj myszą (X: ${continueBox.x}, Y: ${continueBox.y})...`);
-      await page.mouse.click(continueBox.x, continueBox.y);
-      await new Promise(r => setTimeout(r, 4000));
-    }
-  } catch (e) {}
-
-  // --- KROK 3: LOGOWANIE HASŁEM (JEŚLI WYSTĄPI POLE PASSSWORD) ---
-  try {
-    const passInput = await page.$('input[type="password"]');
-    if (passInput && FB_PASSWORD) {
-      console.log("Wpisuję hasło do konta...");
-      await passInput.type(FB_PASSWORD, { delay: 100 });
-      await page.keyboard.press("Enter");
-      await new Promise(r => setTimeout(r, 5000));
-    }
-  } catch (e) {}
-
-  // --- KROK 4: AUTOMATYCZNE 2FA ---
-  try {
-    const input2FA = await page.$('input[type="text"], input[name="approvals_code"]');
-    if (input2FA || page.url().includes("checkpoint") || page.url().includes("auth_platform")) {
+    const currentUrl = page.url();
+    if (currentUrl.includes("auth_platform") || currentUrl.includes("checkpoint")) {
       const code2FA = authenticator.generate(SECRET_2FA);
-      console.log(`Generuję i wpisuję kod 2FA: ${code2FA}`);
+      console.log(`Wykryto 2FA! Generuję kod: ${code2FA}`);
 
+      const input2FA = await page.$('input[type="text"], input[name="approvals_code"]');
       if (input2FA) {
         await input2FA.type(code2FA, { delay: 100 });
         await page.keyboard.press("Enter");
+        console.log("Kod 2FA wysłany!");
         await new Promise(r => setTimeout(r, 6000));
       }
     }
   } catch (e) {}
 
-  // --- KROK 5: PIN E2EE 0612 ---
+  // --- 3. PIN E2EE 0612 ---
   try {
     if (KOD_PIN) {
       console.log(`Wprowadzanie kodu PIN (${KOD_PIN})...`);
