@@ -1,4 +1,4 @@
-const login = require("@pitu/facebook-chat-api");
+const login = require("facebook-chat-api");
 const http = require("http");
 
 // ================= KONFIGURACJA =================
