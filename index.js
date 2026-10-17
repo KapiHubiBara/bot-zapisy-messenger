@@ -7,7 +7,7 @@ const fs = require("fs");
 const ID_GRUPY = "3225092577679626";
 const SLOWO_KLUCZ = "zapisy";
 const WYBRANY_PAKIET = "pakiet 1";
-const KOD_PIN = "062003"; // Wpisz swój 6-cyfrowy PIN Messenger
+const KOD_PIN = "TUTAJ_WPISZ_SWOJ_6_CYFROWY_PIN"; // Wpisz swój 6-cyfrowy PIN Messenger
 const PORT = process.env.PORT || 3000;
 // ================================================
 
@@ -91,35 +91,52 @@ try {
   }
   // ----------------------------------------
 
-  console.log("Bot zalogowany na stronie. Rozpoczynam obserwację DOM czatu...");
+  console.log("Bot zalogowany na stronie. Rozpoczynam obserwację wiadomości...");
 
-  let wyslano = false;
+  let przetworzoneWiadomosci = new Set();
 
   setInterval(async () => {
     try {
-      const messages = await page.evaluate(() => {
-        const elements = document.querySelectorAll('[role="row"], [role="article"], div[dir="auto"]');
-        const texts = [];
-        elements.forEach(el => {
-          if (el.innerText) texts.push(el.innerText);
+      const wiadomosci = await page.evaluate((keyword) => {
+        // Pobieramy wszystkie bąbelki/wiersze wiadomości w oknie czatu
+        const rows = document.querySelectorAll('[role="row"]');
+        if (rows.length === 0) return [];
+
+        const znalezione = [];
+
+        rows.forEach((row, index) => {
+          const text = row.innerText || "";
+          if (text.toLowerCase().includes(keyword.toLowerCase())) {
+            // Unikalny identyfikator wiadomości na podstawie pozycji i treści
+            znalezione.push({
+              id: `${index}_${text.trim()}`,
+              text: text.trim()
+            });
+          }
         });
-        return texts;
-      });
 
-      if (messages.length > 0) {
-        const lastMessage = messages[messages.length - 1];
+        return znalezione;
+      }, SLOWO_KLUCZ);
 
-        if (lastMessage.toLowerCase().includes(SLOWO_KLUCZ.toLowerCase()) && !wyslano) {
-          console.log(`Wykryto słowo kluczowe w wiadomości: "${lastMessage}"`);
-          wyslano = true;
+      if (wiadomosci.length > 0) {
+        const ostatnia = wiadomosci[wiadomosci.length - 1];
 
-          const inputSelector = '[role="textbox"], div[contenteditable="true"]';
+        // Jeśli ta konkretna wiadomość nie była jeszcze obsłużona:
+        if (!przetworzoneWiadomosci.has(ostatnia.id)) {
+          console.log(`[NOWA WIADOMOŚĆ] Wykryto słowo kluczowe: "${ostatnia.text}"`);
+          
+          // Oznaczamy wiadomość jako przetworzoną
+          przetworzoneWiadomosci.add(ostatnia.id);
+
+          // Klikamy w pole tekstowe i wysyłamy odpowiedź
+          const inputSelector = 'p[dir="auto"], [role="textbox"], div[contenteditable="true"]';
           await page.waitForSelector(inputSelector, { timeout: 5000 });
           await page.click(inputSelector);
-          await page.type(inputSelector, WYBRANY_PAKIET);
+
+          await page.keyboard.type(WYBRANY_PAKIET, { delay: 50 });
           await page.keyboard.press("Enter");
 
-          console.log(`SUKCES! Wysłano odpowiedź: "${WYBRANY_PAKIET}" na czacie.`);
+          console.log(`SUKCES! Wysłano odpowiedź: "${WYBRANY_PAKIET}"`);
         }
       }
     } catch (err) {}
