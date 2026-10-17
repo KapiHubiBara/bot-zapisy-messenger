@@ -6,6 +6,7 @@ const fs = require("fs");
 const ID_GRUPY = "3225092577679626";
 const SLOWO_KLUCZ = "zapisy";
 const WYBRANY_PAKIET = "pakiet 1";
+const KOD_PIN = "062003"; // Np. "123456"
 const PORT = process.env.PORT || 3000;
 // ================================================
 
@@ -71,6 +72,26 @@ try {
   } catch (e) {
     console.log("Strona załadowana (timeout sieci pominięty).");
   }
+
+  // --- OBSŁUGA MODALA Z PINEM ---
+  try {
+    console.log("Sprawdzanie, czy wyskoczył modal z kodem PIN...");
+    await page.waitForTimeout(3000);
+
+    // Szukamy pół do wpisania PIN-u lub wpisujemy go z klawiatury
+    if (KOD_PIN && KOD_PIN !== "TUTAJ_WPISZ_SWOJ_6_CYFROWY_PIN") {
+      console.log("Wprowadzanie kodu PIN w celu odblokowania czatów...");
+      for (let digit of KOD_PIN) {
+        await page.keyboard.press(digit);
+        await page.waitForTimeout(200);
+      }
+      console.log("PIN wprowadzony, czekam na odblokowanie widoku...");
+      await page.waitForTimeout(5000);
+    }
+  } catch (e) {
+    console.log("Brak modala z PINem lub został już odblokowany.");
+  }
+  // ------------------------------
 
   console.log("Bot zalogowany na stronie. Rozpoczynam obserwację DOM czatu...");
 
