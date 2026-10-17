@@ -1,6 +1,5 @@
 const fs = require('fs');
 const https = require('https');
-const mqtt = require('mqtt');
 
 function login(options, callback) {
   let appState = options.appState;
@@ -8,7 +7,6 @@ function login(options, callback) {
     return callback(new Error("Brak appState!"));
   }
 
-  // Konwersja ciasteczek do formatu nagłówka HTTP
   let cookieHeader = appState.map(c => `${c.key || c.name}=${c.value}`).join('; ');
 
   let api = {
@@ -51,7 +49,6 @@ function login(options, callback) {
     setOptions: function(opts) {},
 
     listenMqtt: function(cb) {
-      // Prosty polling powiadomień HTTP zapobiegający blokadom MQTT
       setInterval(() => {
         let reqOpts = {
           hostname: 'www.messenger.com',
@@ -65,7 +62,7 @@ function login(options, callback) {
         };
 
         https.get(reqOpts, (res) => {
-          // Nasłuchiwanie aktywne
+          // Nasłuchywanie aktywne
         }).on('error', (e) => cb(e, null));
       }, 3000);
     }
